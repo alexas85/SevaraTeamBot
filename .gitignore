@@ -1,0 +1,65 @@
+# Виртуальные окружения (обязательно для Python)
+venv/
+.venv/
+env/
+ENV/
+
+# PyCharm (твоя IDE)
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Кэш и байт‑код Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Артефакты сборки и дистрибутивы
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Файлы переменных окружения и секреты (токены бота и т. п.)
+.env
+*.secret
+secrets.json
+config/local_config.py
+
+# Лог‑файлы и временные файлы
+*.log
+logs/
+*.tmp
+*.temp
+
+# Системные файлы ОС
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Тесты и покрытие кода (если будешь подключать позже)
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Jupyter (если вдруг будешь использовать)
+.ipynb_checkpoints
+sevara.db
