@@ -1,5 +1,6 @@
 import telebot
 from telebot import types
+from database import get_instruction
 
 def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
     def ensure_state_main(chat_id):
@@ -9,6 +10,7 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
     @bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == "Я мастер")
     def handle_master_menu(message):
         text = message.text
+
         if text == "🔙 Назад в меню мастера":
             ensure_state_main(message.chat.id)
             user_states[message.chat.id] = "main"
@@ -23,20 +25,51 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
             )
             return
 
-        # Пример простого пункта меню
-        if text == "📖 Инструкции для мастера":
-            bot.reply_to(message, "Здесь будут инструкции для мастера. Пока в разработке.")
+        # Новые пункты меню мастера
+        if text == "✨ Стерилизация и СанПиН":
+            row = get_instruction("master", "sterilization")
+            if row and (row["text_content"] or row["description"] or row["photo_file_id"] or row["video_file_id"]):
+                if row["text_content"]:
+                    bot.send_message(message.chat.id, row["text_content"])
+                if row["description"]:
+                    bot.send_message(message.chat.id, f"📝 Описание: {row['description']}")
+                if row["photo_file_id"]:
+                    bot.send_photo(message.chat.id, photo=row["photo_file_id"])
+                if row["video_file_id"]:
+                    bot.send_video(message.chat.id, video=row["video_file_id"])
+            else:
+                bot.send_message(message.chat.id, "Пока нет материалов по этой теме.")
             show_master_back_buttons(bot, message)
             return
 
-def show_master_main_menu(bot: telebot.TeleBot, message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-    btns = [
-        types.KeyboardButton("📖 Инструкции для мастера"),
-    ]
-    btns.append(types.KeyboardButton("🔙 Назад в меню мастера"))
-    markup.add(*btns)
-    bot.send_message(message.chat.id, "Меню мастера студии Sevara:", reply_markup=markup)
+        if text == "💨 Чистота и оборудование":
+            row = get_instruction("master", "cleanliness")
+            if row and (row["text_content"] or row["description"] or row["photo_file_id"] or row["video_file_id"]):
+                if row["text_content"]:
+                    bot.send_message(message.chat.id, row["text_content"])
+                if row["description"]:
+                    bot.send_message(message.chat.id, f"📝 Описание: {row['description']}")
+                if row["photo_file_id"]:
+                    bot.send_photo(message.chat.id, photo=row["photo_file_id"])
+                if row["video_file_id"]:
+                    bot.send_video(message.chat.id, video=row["video_file_id"])
+            else:
+                bot.send_message(message.chat.id, "Пока нет материалов по этой теме.")
+            show_master_back_buttons(bot, message)
+            return
+
+    def show_master_main_menu(bot: telebot.TeleBot, message):
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+        btns = [
+            types.KeyboardButton("✨ Стерилизация и СанПиН"),
+            types.KeyboardButton("💨 Чистота и оборудование"),
+        ]
+        btns.append(types.KeyboardButton("🔙 Назад в меню мастера"))
+        markup.add(*btns)
+        bot.send_message(message.chat.id, "Меню мастера студии Sevara:", reply_markup=markup)
+
+    show_master_main_menu(bot, message)  # показываем меню сразу при входе в состояние мастера
+
 
 def show_master_back_buttons(bot: telebot.TeleBot, message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -44,6 +77,6 @@ def show_master_back_buttons(bot: telebot.TeleBot, message):
     markup.add(btn_back)
     bot.send_message(
         message.chat.id,
-        "Нажмите «Назад», чтобы вернуться к выбору роли.",
+        "Нажмите «Назад», чтобы вернуться в меню мастера.",
         reply_markup=markup
     )

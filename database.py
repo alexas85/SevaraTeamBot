@@ -11,13 +11,14 @@ def get_conn():
 def init_db():
     with get_conn() as conn:
         cur = conn.cursor()
-        # Таблица для инструкций (текст + фото/видео file_id)
+        # Добавлено поле description
         cur.execute("""
             CREATE TABLE IF NOT EXISTS instructions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 role TEXT NOT NULL,
                 key TEXT NOT NULL,
                 text_content TEXT,
+                description TEXT,
                 photo_file_id TEXT,
                 video_file_id TEXT,
                 UNIQUE(role, key)
@@ -34,6 +35,19 @@ def get_instruction(role: str, key: str):
         )
         row = cur.fetchone()
         return dict(row) if row else None
+
+def set_instruction_content(role: str, key: str, text_content: str = None, description: str = None):
+    """Обновляет текст и/или описание инструкции."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT OR REPLACE INTO instructions (role, key, text_content, description)
+            VALUES (?, ?, ?, ?)
+            """,
+            (role, key, text_content, description)
+        )
+        conn.commit()
 
 def set_photo_for_category(role: str, key: str, file_id: str):
     with get_conn() as conn:

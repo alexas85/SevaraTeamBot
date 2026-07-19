@@ -1,8 +1,9 @@
 import telebot
 from telebot import types
-from database import get_instruction, set_photo_for_category, set_video_for_category
+from database import get_instruction, set_photo_for_category, set_video_for_category, set_instruction_content
 
-upload_state = {}  # user_id -> (role, category_key)
+# upload_state: user_id -> {"role": str, "key": str, "waiting_for": "description"|"media"}
+upload_state = {}
 
 def register_admin_handlers(bot: telebot.TeleBot, user_states: dict):
     def ensure_state_main(chat_id):
@@ -37,6 +38,8 @@ def register_admin_handlers(bot: telebot.TeleBot, user_states: dict):
                 types.KeyboardButton("🔑 Открытие и закрытие салона (админ)"),
                 types.KeyboardButton("📊 Работа в Yclients и Fitmost (админ)"),
             ]
+            # ДОБАВЛЕНА кнопка «Назад» прямо в это меню
+            btns.append(types.KeyboardButton("🔙 Назад в админ‑меню"))
             markup.add(*btns)
             bot.reply_to(message, "Выберите категорию, куда загрузить фото/видео:", reply_markup=markup)
             return
@@ -50,10 +53,15 @@ def register_admin_handlers(bot: telebot.TeleBot, user_states: dict):
         pair = mapping_upload.get(text)
         if pair:
             role, key = pair
-            upload_state[message.chat.id] = (role, key)
-            bot.reply_to(message, f"Отлично! Теперь отправьте фото или видео для категории: {text}")
+            # Теперь мы сначала ждём описание
+            upload_state[message.chat.id] = {"role": role, "key": key, "waiting_for": "description"}
+            bot.reply_to(
+                message,
+                f"Отлично! Сначала напишите короткое описание для категории «{text}»:\n(потом отправьте фото или видео)"
+            )
             return
 
+        # Просмотр разделов админа
         mapping_admin_view = {
             "🔑 Открытие и закрытие салона": ("admin", "opening_closing"),
             "📊 Работа в Yclients и Fitmost": ("admin", "yclients_fitmost"),
@@ -65,7 +73,10 @@ def register_admin_handlers(bot: telebot.TeleBot, user_states: dict):
             role, key = pair
             row = get_instruction(role, key)
             if row:
-                bot.send_message(message.chat.id, row["text_content"])
+                if row["text_content"]:
+                    bot.send_message(message.chat.id, row["text_content"])
+                if row["description"]:
+                    bot.send_message(message.chat.id, f"📝 Описание: {row['description']}")
                 if row["photo_file_id"]:
                     bot.send_photo(message.chat.id, photo=row["photo_file_id"])
                 if row["video_file_id"]:
@@ -73,24 +84,50 @@ def register_admin_handlers(bot: telebot.TeleBot, user_states: dict):
             show_admin_back_buttons(bot, message)
             return
 
-    @bot.message_handler(content_types=["photo", "video"], func=lambda msg: msg.chat.id in upload_state)
-    def handle_upload_media(message):
+    # Обработка сообщений при загрузке (описание или медиа)
+    @bot.message_handler(func=lambda msg: msg.chat.id in upload_state)
+    def handle_upload_flow(message):
         user_id = message.chat.id
-        if user_id not in upload_state:
+        state = upload_state.get(user_id)
+        if not state:
             return
-        role, key = upload_state.pop(user_id)
 
-        file_id = None
-        if message.photo:
-            file_id = message.photo[-1].file_id
-            set_photo_for_category(role, key, file_id)
-            bot.reply_to(message, "Фото сохранено для этой категории!")
-        elif message.video:
-            file_id = message.video.file_id
-            set_video_for_category(role, key, file_id)
-            bot.reply_to(message, "Видео сохранено для этой категории!")
+        if state["waiting_for"] == "description":
+            # Сохраняем описание
+            set_instruction_content(
+                state["role"],
+                state["key"],
+                description=message.text
+            )
+            # Меняем ожидание на медиа
+            state["waiting_for"] = "media"
+            bot.reply_to(
+                message,
+                "Описание сохранено! Теперь отправьте фото или видео для этой категории."
+            )
+            return
 
-        show_admin_main_menu(bot, message)
+        elif state["waiting_for"] == "media":
+            file_id = None
+            if message.photo:
+                file_id = message.photo[-1].file_id
+                set_photo_for_category(state["role"], state["key"], file_id)
+                bot.reply_to(message, "Фото сохранено!")
+            elif message.video:
+                file_id = message.video.file_id
+                set_video_for_category(state["role"], state["key"], file_id)
+                bot.reply_to(message, "Видео сохранено!")
+
+            # Завершаем загрузку
+            upload_state.pop(user_id, None)
+            show_admin_main_menu(bot, message)
+            return
+
+    @bot.message_handler(content_types=["photo", "video"], func=lambda msg: msg.chat.id in upload_state and upload_state[msg.chat.id]["waiting_for"] == "media")
+    # Этот хендлер можно оставить как страховку, но основной поток теперь в handle_upload_flow
+    def handle_upload_media_fallback(message):
+        # Дублируем логику, если вдруг сработает отдельно
+        handle_upload_flow(message)
 
 
 def show_admin_main_menu(bot: telebot.TeleBot, message):
