@@ -2,6 +2,18 @@ import telebot
 from telebot import types
 from database import get_instruction
 
+# Выносим функцию на верхний уровень — теперь её можно импортировать
+def show_master_main_menu(bot: telebot.TeleBot, message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+    btns = [
+        types.KeyboardButton("✨ Стерилизация и СанПиН"),
+        types.KeyboardButton("💨 Чистота и оборудование"),
+    ]
+    btns.append(types.KeyboardButton("🔙 Назад в меню мастера"))
+    markup.add(*btns)
+    bot.send_message(message.chat.id, "Меню мастера студии Sevara:", reply_markup=markup)
+
+
 def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
     def ensure_state_main(chat_id):
         if chat_id not in user_states:
@@ -25,7 +37,6 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
             )
             return
 
-        # Новые пункты меню мастера
         if text == "✨ Стерилизация и СанПиН":
             row = get_instruction("master", "sterilization")
             if row and (row["text_content"] or row["description"] or row["photo_file_id"] or row["video_file_id"]):
@@ -57,18 +68,6 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
                 bot.send_message(message.chat.id, "Пока нет материалов по этой теме.")
             show_master_back_buttons(bot, message)
             return
-
-    def show_master_main_menu(bot: telebot.TeleBot, message):
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-        btns = [
-            types.KeyboardButton("✨ Стерилизация и СанПиН"),
-            types.KeyboardButton("💨 Чистота и оборудование"),
-        ]
-        btns.append(types.KeyboardButton("🔙 Назад в меню мастера"))
-        markup.add(*btns)
-        bot.send_message(message.chat.id, "Меню мастера студии Sevara:", reply_markup=markup)
-
-    show_master_main_menu(bot, message)  # показываем меню сразу при входе в состояние мастера
 
 
 def show_master_back_buttons(bot: telebot.TeleBot, message):
