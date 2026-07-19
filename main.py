@@ -11,32 +11,28 @@ try:
 except ImportError as e:
     print("=== ОШИБКА ИМПОРТА ===")
     print(e)
-    print("Проверь: в папке handlers есть пустой файл __init__.py")
     sys.exit(1)
 
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_API_TOKEN")
-print(f"[DEBUG] TOKEN = {TOKEN!r}")
+print(f"[DEBUG] TOKEN loaded: {bool(TOKEN)}")
 
 if not TOKEN:
     print("=== КРИТИЧЕСКАЯ ОШИБКА ===")
-    print("Не найден TELEGRAM_API_TOKEN в файле .env")
+    print("Не найден TELEGRAM_API_TOKEN в переменных окружения")
     sys.exit(1)
 
 bot = telebot.TeleBot(TOKEN)
 
-# --- Принудительно убираем влияние прокси (для любого способа запуска) ---
-import no_proxy_session
-import telebot.apihelper
-telebot.apihelper._session = no_proxy_session.get_clean_session()
-
 user_states = {}  # user_id -> state
+
 
 def ensure_state_main(chat_id):
     """Гарантирует, что у пользователя есть состояние. Если нет — ставит 'main'."""
     if chat_id not in user_states:
         user_states[chat_id] = "main"
+
 
 print("[DEBUG] Инициализация БД...")
 try:
@@ -57,6 +53,7 @@ except Exception as e:
     traceback.print_exc()
     sys.exit(1)
 
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     ensure_state_main(message.chat.id)
@@ -75,7 +72,6 @@ def send_welcome(message):
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
 
-# Хендлер для главного меню — только когда состояние "main"
 @bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == "main")
 def handle_main_menu(message):
     ensure_state_main(message.chat.id)
@@ -89,6 +85,7 @@ def handle_main_menu(message):
         user_states[message.chat.id] = "Я администратор"
         show_admin_main_menu(bot, message)
         return
+
 
 if __name__ == '__main__':
     print("\n=== БОТ ЗАПУЩЕН И ОЖИДАЕТ СООБЩЕНИЙ ===")
