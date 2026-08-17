@@ -1,6 +1,8 @@
 import telebot
 from telebot import types
 from database import get_instruction
+from config import STATE_MAIN, STATE_ROLE_MASTER, STATE_ROLE_ADMIN
+
 
 # Импортируем константы состояний из main.py (или можно вынести в отдельный файл config.py)
 from main import STATE_ROLE_ADMIN, STATE_MAIN

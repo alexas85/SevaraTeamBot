@@ -2,6 +2,8 @@ import telebot
 from telebot import types
 from database import get_instruction
 from main import STATE_ROLE_MASTER, STATE_MAIN
+from config import STATE_MAIN, STATE_ROLE_MASTER, STATE_ROLE_ADMIN
+
 
 
 def show_master_main_menu(bot: telebot.TeleBot, message):

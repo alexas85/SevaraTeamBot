@@ -4,6 +4,8 @@ import traceback
 import telebot
 from dotenv import load_dotenv
 from database import init_db
+from config import STATE_MAIN, STATE_ROLE_MASTER, STATE_ROLE_ADMIN
+
 
 try:
     from handlers.master import register_master_handlers, show_master_main_menu
