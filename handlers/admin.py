@@ -1,11 +1,8 @@
+# handlers/admin.py
 import telebot
 from telebot import types
 from database import get_instruction
-from config import STATE_MAIN, STATE_ROLE_MASTER, STATE_ROLE_ADMIN
-
-
-# Импортируем константы состояний из main.py (или можно вынести в отдельный файл config.py)
-from main import STATE_ROLE_ADMIN, STATE_MAIN
+from config import STATE_MAIN, STATE_ROLE_ADMIN
 
 
 def register_admin_handlers(bot: telebot.TeleBot, user_states: dict):
@@ -17,7 +14,6 @@ def register_admin_handlers(bot: telebot.TeleBot, user_states: dict):
     def handle_admin_menu(message):
         text = message.text
 
-        # Кнопка «Назад в админ‑меню» — возвращает к выбору роли
         if text == "🔙 Назад в админ‑меню":
             ensure_state_main(message.chat.id)
             user_states[message.chat.id] = STATE_MAIN
@@ -43,13 +39,13 @@ def register_admin_handlers(bot: telebot.TeleBot, user_states: dict):
             role, key = pair
             row = get_instruction(role, key)
             if row:
-                if row["text_content"]:
+                if row.get("text_content"):
                     bot.send_message(message.chat.id, row["text_content"])
-                if row["description"]:
+                if row.get("description"):
                     bot.send_message(message.chat.id, f"📝 Описание: {row['description']}")
-                if row["photo_file_id"]:
+                if row.get("photo_file_id"):
                     bot.send_photo(message.chat.id, photo=row["photo_file_id"])
-                if row["video_file_id"]:
+                if row.get("video_file_id"):
                     bot.send_video(message.chat.id, video=row["video_file_id"])
             else:
                 bot.send_message(message.chat.id, "Пока нет материалов по этому разделу.")

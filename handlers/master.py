@@ -1,7 +1,8 @@
+# handlers/master.py
 import telebot
 from telebot import types
 from database import get_instruction, get_conn
-from config import STATE_ROLE_MASTER, STATE_MAIN  # <-- Важно: используем config.py
+from config import STATE_ROLE_MASTER, STATE_MAIN
 
 
 def show_master_main_menu(bot: telebot.TeleBot, message):
@@ -25,7 +26,6 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
     def handle_master_menu(message):
         text = message.text
 
-        # Кнопка «Назад»
         if text == "🔙 Назад в меню мастера":
             ensure_state_main(message.chat.id)
             user_states[message.chat.id] = STATE_MAIN
@@ -40,7 +40,6 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
             )
             return
 
-        # Стерилизация — теперь из БД
         if text == "✨ Стерилизация и СанПиН":
             row = get_instruction("master", "sterilization_sanpin")
             if row and row.get("text_content"):
@@ -50,7 +49,6 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
             show_master_back_buttons(bot, message)
             return
 
-        # Чистота и оборудование
         if text == "💨 Чистота и оборудование":
             row = get_instruction("master", "cleanliness")
             has_content = False
@@ -73,14 +71,12 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
             show_master_back_buttons(bot, message)
             return
 
-        # Регламенты и штрафы (ИСПРАВЛЕНО: вынесено из предыдущего блока)
         if text == "📜 Регламенты и штрафы":
             show_regulations_categories(bot, message)
             return
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("reg_detail_"))
     def callback_handler(call):
-        # Передаем bot явно, так как он доступен в замыкании register_master_handlers
         handle_regulation_callback(bot, call)
 
 
@@ -94,8 +90,7 @@ def show_regulations_categories(bot: telebot.TeleBot, message):
         categories = cur.fetchall()
 
     for row in categories:
-        # row - это кортеж, берем первый элемент
-        cat_name = row
+        cat_name = row[0]  # row — это кортеж, берём первый элемент
         markup.add(types.KeyboardButton(f"📂 {cat_name}"))
 
     markup.add(types.KeyboardButton("🔙 Назад в меню мастера"))
@@ -141,8 +136,7 @@ def handle_regulation_callback(bot: telebot.TeleBot, call):
                 row = cur.fetchone()
 
                 if row:
-                    # row - это кортеж ('Текст...',), поэтому берем row
-                    text_content = row
+                    text_content = row[0]
 
                     bot.answer_callback_query(call.id)
                     bot.send_message(call.message.chat.id, text_content, parse_mode="HTML")

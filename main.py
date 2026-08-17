@@ -3,17 +3,16 @@ import sys
 import traceback
 import telebot
 from dotenv import load_dotenv
-from database import init_db
+
+# Импортируем состояния из config.py — так мы избегаем циклических импортов
 from config import STATE_MAIN, STATE_ROLE_MASTER, STATE_ROLE_ADMIN
 
+# Импортируем функции регистрации и отображения меню из хендлеров
+from handlers.master import register_master_handlers, show_master_main_menu
+from handlers.admin import register_admin_handlers, show_admin_main_menu
 
-try:
-    from handlers.master import register_master_handlers, show_master_main_menu
-    from handlers.admin import register_admin_handlers
-except ImportError as e:
-    print("=== ОШИБКА ИМПОРТА ===")
-    print(e)
-    sys.exit(1)
+from database import init_db
+
 
 load_dotenv()
 
@@ -27,15 +26,12 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-# --- Константы состояний ---
-STATE_MAIN = "main"
-STATE_ROLE_MASTER = "role_master"
-STATE_ROLE_ADMIN = "role_admin"
-
-user_states = {}  # user_id -> state
+# Хранилище состояний пользователей: user_id -> state
+user_states = {}
 
 
 def ensure_state_main(chat_id):
+    """Гарантирует, что у пользователя есть состояние STATE_MAIN."""
     if chat_id not in user_states:
         user_states[chat_id] = STATE_MAIN
 
@@ -51,6 +47,7 @@ except Exception as e:
 
 print("[DEBUG] Регистрация хендлеров...")
 try:
+    # Регистрируем хендлеры для мастера и админа
     register_master_handlers(bot, user_states)
     register_admin_handlers(bot, user_states)
     print("[DEBUG] Хендлеры зарегистрированы.")
@@ -87,9 +84,10 @@ def handle_main_menu(message):
         user_states[message.chat.id] = STATE_ROLE_MASTER
         show_master_main_menu(bot, message)
         return
+
     if text == "Я администратор":
         user_states[message.chat.id] = STATE_ROLE_ADMIN
-        from handlers.admin import show_admin_main_menu
+        # Теперь функция уже импортирована в начале файла — никаких локальных импортов
         show_admin_main_menu(bot, message)
         return
 
