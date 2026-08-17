@@ -1,9 +1,8 @@
 import telebot
 from telebot import types
 from database import get_instruction
+# Если ты ещё не создал config.py — пока оставь импорты из main, но лучше вынести константы (см. ниже)
 from main import STATE_ROLE_MASTER, STATE_MAIN
-from config import STATE_MAIN, STATE_ROLE_MASTER, STATE_ROLE_ADMIN
-
 
 
 def show_master_main_menu(bot: telebot.TeleBot, message):
@@ -26,6 +25,7 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
     def handle_master_menu(message):
         text = message.text
 
+        # Кнопка «Назад»
         if text == "🔙 Назад в меню мастера":
             ensure_state_main(message.chat.id)
             user_states[message.chat.id] = STATE_MAIN
@@ -40,52 +40,36 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
             )
             return
 
+        # Стерилизация — теперь из БД
         if text == "✨ Стерилизация и СанПиН":
-            instruction_text = (
-                "🧼 Инструкция по дезинфекции, ПСО и стерилизации инструментов\n\n"
-                "1. Дезинфекция\n"
-                "   Подготовка: Раскройте ножницы и кусачки полностью. Фрезы разложите отдельно в специальный отсек (лоток).\n"
-                "   Погружение: Поместите инструменты в ультразвуковую (УЗ) мойку с дезинфицирующим раствором.\n"
-                "   Экспозиция: Выдержите инструменты в УЗ-мойке ровно 5 минут.\n\n"
-                "2. Предстерилизационная очистка (ПСО)\n"
-                "   Промывание: Промойте инструменты под проточной водой в течение 5–7 минут.\n"
-                "   Очистка фрез: Тщательно очистите фрезы металлической щеточкой для удаления кожного жира (себума) и остатков опила.\n"
-                "   Примечание: Металлическую щетку используйте только для фрез, соприкасавшихся с кожей.\n\n"
-                "3. Сушка\n"
-                "   Просушивание: Выложите инструменты на чистую салфетку. Дождитесь их полного высыхания (влажные инструменты закладывать в сухожар запрещено).\n\n"
-                "4. Упаковка и ведение документации\n"
-                "   Комплектация: Разложите полностью сухие инструменты по крафт-пакетам.\n"
-                "   Маркировка: Заполните информацию на крафт-пакетах (дата, подпись, содержимое).\n"
-                "   Заполнение журнала: Внесите данные в журнал контроля работы стерилизаторов:\n"
-                "     • Название сухожара: Свами Beauty (СБ)\n"
-                "     • Наименование и точное количество инструментов (ножницы, фрезы, кусачки и т.д.).\n"
-                "     • Количество задействованных крафт-пакетов.\n"
-                "     • Параметры стерилизации: 200 °C / 30 минут.\n"
-                "     • Подпись ответственного лица.\n\n"
-                "5. Стерилизация в сухожаре Beauty\n"
-                "   Закладка: Поместите крафт-пакеты в сухожаровой шкаф Beauty на специальные полочки без наложения друг на друга.\n"
-                "   Контроль: Используйте химические индикаторы (режимные, на 200 °C / 30 мин). Закладывайте их в разные части камеры (вперед и назад) для контроля равномерного распределения тепла.\n"
-                "   Режим: Запустите цикл стерилизации на 200 °C на 30 минут.\n\n"
-                "6. Завершение процесса\n"
-                "   Фиксация контроля: После окончания цикла вклейте отработавшие индикаторы в журнал стерилизации.\n"
-                "   Охлаждение: Дайте инструментам полностью остыть внутри пакетов. Остывшие стерильные инструменты готовы к работе."
-            )
-            bot.send_message(message.chat.id, instruction_text, parse_mode="Markdown")
+            row = get_instruction("master", "sterilization_sanpin")
+            if row and row["text_content"]:
+                bot.send_message(message.chat.id, row["text_content"], parse_mode="Markdown")
+            else:
+                bot.send_message(message.chat.id, "Инструкция по стерилизации временно недоступна.")
             show_master_back_buttons(bot, message)
             return
 
+        # Чистота и оборудование
         if text == "💨 Чистота и оборудование":
             row = get_instruction("master", "cleanliness")
-            if row and (row["text_content"] or row["description"] or row["photo_file_id"] or row["video_file_id"]):
+            # Отправляем всё, что есть: текст, описание, фото, видео
+            has_content = False
+            if row:
                 if row["text_content"]:
                     bot.send_message(message.chat.id, row["text_content"])
+                    has_content = True
                 if row["description"]:
                     bot.send_message(message.chat.id, f"📝 Описание: {row['description']}")
+                    has_content = True
                 if row["photo_file_id"]:
                     bot.send_photo(message.chat.id, photo=row["photo_file_id"])
+                    has_content = True
                 if row["video_file_id"]:
                     bot.send_video(message.chat.id, video=row["video_file_id"])
-            else:
+                    has_content = True
+
+            if not has_content:
                 bot.send_message(message.chat.id, "Пока нет материалов по этой теме.")
             show_master_back_buttons(bot, message)
             return
@@ -95,6 +79,8 @@ def show_master_back_buttons(bot: telebot.TeleBot, message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn_back = types.KeyboardButton("🔙 Назад в меню мастера")
     markup.add(btn_back)
+    # Можно не слать новое сообщение, а просто вернуть клавиатуру, если хочешь меньше спама.
+    # Но пока оставляем как было.
     bot.send_message(
         message.chat.id,
         "Нажмите «Назад», чтобы вернуться в меню мастера.",
