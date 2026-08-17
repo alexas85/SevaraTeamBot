@@ -2,19 +2,23 @@ import telebot
 from telebot import types
 from database import get_instruction
 
+# Импортируем константы состояний из main.py (или можно вынести в отдельный файл config.py)
+from main import STATE_ROLE_ADMIN, STATE_MAIN
+
+
 def register_admin_handlers(bot: telebot.TeleBot, user_states: dict):
     def ensure_state_main(chat_id):
         if chat_id not in user_states:
-            user_states[chat_id] = "main"
+            user_states[chat_id] = STATE_MAIN
 
-    @bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == "Я администратор")
+    @bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == STATE_ROLE_ADMIN)
     def handle_admin_menu(message):
         text = message.text
 
         # Кнопка «Назад в админ‑меню» — возвращает к выбору роли
         if text == "🔙 Назад в админ‑меню":
             ensure_state_main(message.chat.id)
-            user_states[message.chat.id] = "main"
+            user_states[message.chat.id] = STATE_MAIN
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             btn_master = types.KeyboardButton("Я мастер")
             btn_admin = types.KeyboardButton("Я администратор")
@@ -26,7 +30,6 @@ def register_admin_handlers(bot: telebot.TeleBot, user_states: dict):
             )
             return
 
-        # Просмотр разделов админа
         mapping_admin_view = {
             "🔑 Открытие и закрытие салона": ("admin", "opening_closing"),
             "📊 Работа в Yclients и Fitmost": ("admin", "yclients_fitmost"),
@@ -60,7 +63,6 @@ def show_admin_main_menu(bot: telebot.TeleBot, message):
         types.KeyboardButton("💵 Кассовая дисциплина и отчёты"),
         types.KeyboardButton("📣 Скрипты общения и Продажи"),
     ]
-    # Кнопки «Загрузить медиа» здесь нет — убрали по запросу
     markup.add(*btns)
     bot.send_message(message.chat.id, "Панель администратора студии Sevara:", reply_markup=markup)
 

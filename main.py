@@ -25,12 +25,17 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
+# --- Константы состояний ---
+STATE_MAIN = "main"
+STATE_ROLE_MASTER = "role_master"
+STATE_ROLE_ADMIN = "role_admin"
+
 user_states = {}  # user_id -> state
 
 
 def ensure_state_main(chat_id):
     if chat_id not in user_states:
-        user_states[chat_id] = "main"
+        user_states[chat_id] = STATE_MAIN
 
 
 print("[DEBUG] Инициализация БД...")
@@ -56,7 +61,7 @@ except Exception as e:
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     ensure_state_main(message.chat.id)
-    user_states[message.chat.id] = "main"
+    user_states[message.chat.id] = STATE_MAIN
 
     welcome_text = (
         "Привет! Добро пожаловать в команду студии Sevara. "
@@ -71,18 +76,17 @@ def send_welcome(message):
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == "main")
+@bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == STATE_MAIN)
 def handle_main_menu(message):
     ensure_state_main(message.chat.id)
 
     text = message.text
     if text == "Я мастер":
-        user_states[message.chat.id] = "Я мастер"
+        user_states[message.chat.id] = STATE_ROLE_MASTER
         show_master_main_menu(bot, message)
         return
     if text == "Я администратор":
-        user_states[message.chat.id] = "Я администратор"
-        # Для админа вызываем функцию из handlers/admin.py
+        user_states[message.chat.id] = STATE_ROLE_ADMIN
         from handlers.admin import show_admin_main_menu
         show_admin_main_menu(bot, message)
         return

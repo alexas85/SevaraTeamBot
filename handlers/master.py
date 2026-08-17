@@ -1,6 +1,8 @@
 import telebot
 from telebot import types
 from database import get_instruction
+from main import STATE_ROLE_MASTER, STATE_MAIN
+
 
 def show_master_main_menu(bot: telebot.TeleBot, message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
@@ -16,15 +18,15 @@ def show_master_main_menu(bot: telebot.TeleBot, message):
 def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
     def ensure_state_main(chat_id):
         if chat_id not in user_states:
-            user_states[chat_id] = "main"
+            user_states[chat_id] = STATE_MAIN
 
-    @bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == "Я мастер")
+    @bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == STATE_ROLE_MASTER)
     def handle_master_menu(message):
         text = message.text
 
         if text == "🔙 Назад в меню мастера":
             ensure_state_main(message.chat.id)
-            user_states[message.chat.id] = "main"
+            user_states[message.chat.id] = STATE_MAIN
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             btn_master = types.KeyboardButton("Я мастер")
             btn_admin = types.KeyboardButton("Я администратор")
@@ -36,7 +38,6 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
             )
             return
 
-        # --- ИНСТРУКЦИЯ ПО СТЕРИЛИЗАЦИИ (вставлена прямо сюда) ---
         if text == "✨ Стерилизация и СанПиН":
             instruction_text = (
                 "🧼 Инструкция по дезинфекции, ПСО и стерилизации инструментов\n\n"
@@ -70,7 +71,6 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
             bot.send_message(message.chat.id, instruction_text, parse_mode="Markdown")
             show_master_back_buttons(bot, message)
             return
-        # ---------------------------------------------------------
 
         if text == "💨 Чистота и оборудование":
             row = get_instruction("master", "cleanliness")
