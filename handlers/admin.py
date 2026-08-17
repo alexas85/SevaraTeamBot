@@ -4,10 +4,6 @@ from database import get_instruction
 from config import STATE_MAIN, STATE_ROLE_MASTER, STATE_ROLE_ADMIN
 
 
-# Импортируем константы состояний из main.py (или можно вынести в отдельный файл config.py)
-from main import STATE_ROLE_ADMIN, STATE_MAIN
-
-
 def register_admin_handlers(bot: telebot.TeleBot, user_states: dict):
     def ensure_state_main(chat_id):
         if chat_id not in user_states:
