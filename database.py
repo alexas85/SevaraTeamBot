@@ -8,10 +8,11 @@ def get_conn():
     conn.row_factory = sqlite3.Row
     return conn
 
+
 def init_db():
     with get_conn() as conn:
         cur = conn.cursor()
-        # Добавлено поле description
+        # Таблица для инструкций (старая)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS instructions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,7 +25,19 @@ def init_db():
                 UNIQUE(role, key)
             )
         """)
+
+        # НОВАЯ ТАБЛИЦА для регламентов/штрафов
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS regulations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL,      -- Категория (например, "Дисциплина", "СанПиН")
+                title TEXT NOT NULL,         -- Заголовок кнопки (кратко)
+                full_text TEXT NOT NULL,     -- Полный текст строки из таблицы
+                sort_order INTEGER DEFAULT 0  -- Порядок сортировки
+            )
+        """)
         conn.commit()
+
 
 def get_instruction(role: str, key: str):
     with get_conn() as conn:

@@ -1,8 +1,7 @@
 import telebot
 from telebot import types
-from database import get_instruction
-# Если ты ещё не создал config.py — пока оставь импорты из main, но лучше вынести константы (см. ниже)
-from main import STATE_ROLE_MASTER, STATE_MAIN
+from database import get_instruction, get_conn
+from config import STATE_ROLE_MASTER, STATE_MAIN  # <-- Важно: используем config.py
 
 
 def show_master_main_menu(bot: telebot.TeleBot, message):
@@ -10,6 +9,7 @@ def show_master_main_menu(bot: telebot.TeleBot, message):
     btns = [
         types.KeyboardButton("✨ Стерилизация и СанПиН"),
         types.KeyboardButton("💨 Чистота и оборудование"),
+        types.KeyboardButton("📜 Регламенты и штрафы")
     ]
     btns.append(types.KeyboardButton("🔙 Назад в меню мастера"))
     markup.add(*btns)
@@ -43,7 +43,7 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
         # Стерилизация — теперь из БД
         if text == "✨ Стерилизация и СанПиН":
             row = get_instruction("master", "sterilization_sanpin")
-            if row and row["text_content"]:
+            if row and row.get("text_content"):
                 bot.send_message(message.chat.id, row["text_content"], parse_mode="Markdown")
             else:
                 bot.send_message(message.chat.id, "Инструкция по стерилизации временно недоступна.")
@@ -53,19 +53,18 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
         # Чистота и оборудование
         if text == "💨 Чистота и оборудование":
             row = get_instruction("master", "cleanliness")
-            # Отправляем всё, что есть: текст, описание, фото, видео
             has_content = False
             if row:
-                if row["text_content"]:
+                if row.get("text_content"):
                     bot.send_message(message.chat.id, row["text_content"])
                     has_content = True
-                if row["description"]:
+                if row.get("description"):
                     bot.send_message(message.chat.id, f"📝 Описание: {row['description']}")
                     has_content = True
-                if row["photo_file_id"]:
+                if row.get("photo_file_id"):
                     bot.send_photo(message.chat.id, photo=row["photo_file_id"])
                     has_content = True
-                if row["video_file_id"]:
+                if row.get("video_file_id"):
                     bot.send_video(message.chat.id, video=row["video_file_id"])
                     has_content = True
 
@@ -74,13 +73,91 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
             show_master_back_buttons(bot, message)
             return
 
+        # Регламенты и штрафы (ИСПРАВЛЕНО: вынесено из предыдущего блока)
+        if text == "📜 Регламенты и штрафы":
+            show_regulations_categories(bot, message)
+            return
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("reg_detail_"))
+    def callback_handler(call):
+        # Передаем bot явно, так как он доступен в замыкании register_master_handlers
+        handle_regulation_callback(bot, call)
+
+
+def show_regulations_categories(bot: telebot.TeleBot, message):
+    """Показывает кнопки с категориями штрафов"""
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT DISTINCT category FROM regulations ORDER BY category")
+        categories = cur.fetchall()
+
+    for row in categories:
+        # row - это кортеж, берем первый элемент
+        cat_name = row
+        markup.add(types.KeyboardButton(f"📂 {cat_name}"))
+
+    markup.add(types.KeyboardButton("🔙 Назад в меню мастера"))
+
+    bot.send_message(
+        message.chat.id,
+        "Выберите категорию правил, чтобы узнать детали:",
+        reply_markup=markup
+    )
+
+
+def show_regulations_by_category(bot: telebot.TeleBot, message, category_name):
+    """Показывает список правил внутри категории"""
+    clean_category = category_name.replace("📂 ", "")
+    markup = types.InlineKeyboardMarkup(row_width=1)
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, title FROM regulations WHERE category = ? ORDER BY sort_order", (clean_category,))
+        rows = cur.fetchall()
+
+        for reg_id, title in rows:
+            btn = types.InlineKeyboardButton(title, callback_data=f"reg_detail_{reg_id}")
+            markup.add(btn)
+
+    bot.send_message(
+        message.chat.id,
+        f"Правила категории: <b>{clean_category}</b>\nВыберите пункт для подробностей:",
+        reply_markup=markup,
+        parse_mode="HTML"
+    )
+
+
+def handle_regulation_callback(bot: telebot.TeleBot, call):
+    """Обрабатывает нажатие на конкретное правило"""
+    if call.data.startswith("reg_detail_"):
+        try:
+            reg_id = int(call.data.split("_")[-1])
+
+            with get_conn() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT full_text FROM regulations WHERE id = ?", (reg_id,))
+                row = cur.fetchone()
+
+                if row:
+                    # row - это кортеж ('Текст...',), поэтому берем row
+                    text_content = row
+
+                    bot.answer_callback_query(call.id)
+                    bot.send_message(call.message.chat.id, text_content, parse_mode="HTML")
+                else:
+                    bot.answer_callback_query(call.id, "Правило не найдено", show_alert=True)
+        except Exception as e:
+            print(f"Error in regulation callback: {e}")
+            bot.answer_callback_query(call.id, "Произошла ошибка при загрузке правила", show_alert=True)
+
 
 def show_master_back_buttons(bot: telebot.TeleBot, message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn_back = types.KeyboardButton("🔙 Назад в меню мастера")
     markup.add(btn_back)
-    # Можно не слать новое сообщение, а просто вернуть клавиатуру, если хочешь меньше спама.
-    # Но пока оставляем как было.
+
     bot.send_message(
         message.chat.id,
         "Нажмите «Назад», чтобы вернуться в меню мастера.",
