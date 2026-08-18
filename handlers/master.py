@@ -117,8 +117,7 @@ def show_regulations_categories(bot, message):
 
         # Строим кнопки из категорий
         for row in categories:
-            cat_name = row
-            # Добавляем эмодзи 📂 к названию
+            cat_name = row  # <--- Берем первый элемент кортежа
             markup.add(telebot.types.KeyboardButton(f"📂 {cat_name}"))
 
         markup.add(telebot.types.KeyboardButton("🔙 Назад в меню мастера"))

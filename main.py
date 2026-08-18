@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 from config import STATE_MAIN, STATE_ROLE_MASTER, STATE_ROLE_ADMIN
 from handlers.master import register_master_handlers, show_master_main_menu
 from handlers.admin import register_admin_handlers, show_admin_main_menu
-from database import init_db, check_and_seed_data
+from database import init_db, seed_data
+
 
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
 LOG_FORMAT = '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s'
@@ -66,14 +67,16 @@ def ensure_state_main(chat_id):
 # --- ИНИЦИАЛИЗАЦИЯ СИСТЕМЫ ---
 logger.info("🗄️ Инициализация базы данных...")
 try:
-    # 1. Создаем таблицы, если их нет
+    # 1. Создаем таблицы
     init_db()
     logger.info("✅ Таблицы БД проверены/созданы.")
 
-    # 2. АВТОМАТИЧЕСКОЕ НАПОЛНЕНИЕ ДАННЫМИ (СЕЙДИНГ)
-    # Если таблица regulations пуста, эта функция заполнит её тестовыми данными
-    check_and_seed_data()
-    logger.info("✅ Проверка и наполнение данных выполнено.")
+    # 2. АВТОМАТИЧЕСКОЕ НАПОЛНЕНИЕ ДАННЫМИ
+    # ВНИМАНИЕ: Если функции check_and_seed_data нет в database.py, этот код вызовет ошибку.
+    # Так как у тебя есть seed_data(), лучше пока закомментировать это и использовать /seed
+    # check_and_seed_data()
+
+    logger.info("⚠️ Автонаполнение пропущено. Используйте команду /seed для заполнения базы.")
 
 except Exception as e:
     logger.critical(f"❌ FATAL ERROR: Не удалось инициализировать БД: {e}")
