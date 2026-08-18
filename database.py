@@ -26,6 +26,18 @@ def init_db():
                 sort_order INTEGER DEFAULT 0
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS instructions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                role TEXT NOT NULL,
+                key TEXT NOT NULL,
+                text_content TEXT,
+                description TEXT,
+                photo_file_id TEXT,
+                video_file_id TEXT,
+                UNIQUE(role, key)
+            )
+        """)
         conn.commit()
 
 
@@ -40,7 +52,7 @@ def seed_data():
 
         # Проверяем, есть ли уже данные
         cur.execute("SELECT count(*) FROM regulations")
-        count = cur.fetchone()
+        count = cur.fetchone()[0]
 
         if count > 0:
             return f"База уже наполнена ({count} записей). Пропускаем seed."
@@ -64,3 +76,32 @@ def seed_data():
         )
         conn.commit()
         return f"Успешно добавлено {len(test_data)} правил."
+
+
+def get_instruction(role: str, key: str):
+    """Возвращает строку инструкции по роли и ключу или None."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM instructions WHERE role = ? AND key = ?",
+            (role, key)
+        )
+        return cur.fetchone()
+
+
+def set_instruction_content(role: str, key: str, text_content: str = None,
+                             description: str = None, photo_file_id: str = None,
+                             video_file_id: str = None):
+    """Создает или обновляет запись инструкции (upsert)."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO instructions (role, key, text_content, description, photo_file_id, video_file_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(role, key) DO UPDATE SET
+                text_content  = excluded.text_content,
+                description   = excluded.description,
+                photo_file_id = excluded.photo_file_id,
+                video_file_id = excluded.video_file_id
+        """, (role, key, text_content, description, photo_file_id, video_file_id))
+        conn.commit()
