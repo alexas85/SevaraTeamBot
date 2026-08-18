@@ -1,32 +1,62 @@
 import os
 import sys
+import logging
 import traceback
 import telebot
 from dotenv import load_dotenv
 
-# Импортируем состояния из config.py — так мы избегаем циклических импортов
+# Импорты из локальных модулей
 from config import STATE_MAIN, STATE_ROLE_MASTER, STATE_ROLE_ADMIN
-
-# Импортируем функции регистрации и отображения меню из хендлеров
 from handlers.master import register_master_handlers, show_master_main_menu
 from handlers.admin import register_admin_handlers, show_admin_main_menu
-
 from database import init_db
 
+# --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
+# Формат: Время | Уровень | Сообщение
+LOG_FORMAT = '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s'
+DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
 
+# Создаем логгер
+logger = logging.getLogger('SevaraTeamBot')
+logger.setLevel(logging.INFO)
+
+# 1. Handler для вывода в консоль (stdout) — критично для Dada Console и других хостингов
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+console_formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+console_handler.setFormatter(console_formatter)
+
+# 2. Handler для записи в файл (на случай, если консоль очищается или нужно детальное расследование)
+try:
+    file_handler = logging.FileHandler('bot.log', encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)  # В файл пишем всё, включая отладку
+    file_formatter = logging.Formatter(f'{LOG_FORMAT} | {DATE_FORMAT}')
+    file_handler.setFormatter(file_formatter)
+    logger.addHandler(file_handler)
+except Exception as e:
+    # Если нет прав на запись файла (редкий случай на некоторых хостингах), логируем ошибку в консоль
+    print(f"⚠️ Не удалось создать файл логов bot.log: {e}")
+
+# Добавляем консольный хендлер
+logger.addHandler(console_handler)
+
+# Загружаем переменные окружения
 load_dotenv()
 
+# --- ПРОВЕРКА ТОКЕНА ---
 TOKEN = os.getenv("TELEGRAM_API_TOKEN")
-print(f"[DEBUG] TOKEN loaded: {bool(TOKEN)}")
 
 if not TOKEN:
-    print("=== КРИТИЧЕСКАЯ ОШИБКА ===")
-    print("Не найден TELEGRAM_API_TOKEN в переменных окружения")
+    logger.critical("❌ КРИТИЧЕСКАЯ ОШИБКА: TELEGRAM_API_TOKEN не найден в переменных окружения!")
+    logger.critical("Проверьте файл .env или настройки переменных окружения в Dada Console.")
     sys.exit(1)
 
+logger.info("✅ Токен успешно загружен.")
+
+# Инициализация бота
 bot = telebot.TeleBot(TOKEN)
 
-# Хранилище состояний пользователей: user_id -> state
+# Хранилище состояний пользователей: chat_id -> state
 user_states = {}
 
 
@@ -36,31 +66,35 @@ def ensure_state_main(chat_id):
         user_states[chat_id] = STATE_MAIN
 
 
-print("[DEBUG] Инициализация БД...")
+# --- ИНИЦИАЛИЗАЦИЯ СИСТЕМЫ ---
+logger.info("🗄️ Инициализация базы данных...")
 try:
     init_db()
-    print("[DEBUG] База данных готова.")
+    logger.info("✅ База данных готова (таблицы проверены/созданы).")
 except Exception as e:
-    print("=== ОШИБКА ПРИ ИНИЦИАЛИЗАЦИИ БД ===")
-    traceback.print_exc()
+    logger.critical(f"❌ ФATAL ERROR: Не удалось инициализировать БД: {e}")
+    logger.critical(traceback.format_exc())
     sys.exit(1)
 
-print("[DEBUG] Регистрация хендлеров...")
+logger.info("📜 Регистрация хендлеров (мастера и админы)...")
 try:
-    # Регистрируем хендлеры для мастера и админа
     register_master_handlers(bot, user_states)
     register_admin_handlers(bot, user_states)
-    print("[DEBUG] Хендлеры зарегистрированы.")
+    logger.info("✅ Хендлеры успешно зарегистрированы.")
 except Exception as e:
-    print("=== ОШИБКА ПРИ РЕГИСТРАЦИИ ХЕНДЛЕРОВ ===")
-    traceback.print_exc()
+    logger.critical(f"❌ ФATAL ERROR: Ошибка при регистрации хендлеров: {e}")
+    logger.critical(traceback.format_exc())
     sys.exit(1)
 
+
+# --- ХЕНДЛЕРЫ БОТА ---
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    ensure_state_main(message.chat.id)
-    user_states[message.chat.id] = STATE_MAIN
+    """Обработчик команды /start"""
+    chat_id = message.chat.id
+    ensure_state_main(chat_id)
+    user_states[chat_id] = STATE_MAIN
 
     welcome_text = (
         "Привет! Добро пожаловать в команду студии Sevara. "
@@ -68,34 +102,58 @@ def send_welcome(message):
         "и сделать твою работу комфортной и безопасной. "
         "Выбери свою роль ниже:"
     )
+
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn_master = telebot.types.KeyboardButton("Я мастер")
     btn_admin = telebot.types.KeyboardButton("Я администратор")
     markup.add(btn_master, btn_admin)
-    bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
+
+    try:
+        bot.send_message(chat_id, welcome_text, reply_markup=markup)
+        logger.info(f"👤 Пользователь {chat_id} нажал /start")
+    except Exception as e:
+        logger.error(f"Ошибка отправки приветствия пользователю {chat_id}: {e}")
 
 
 @bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == STATE_MAIN)
 def handle_main_menu(message):
-    ensure_state_main(message.chat.id)
-
+    """Обработка выбора роли в главном меню"""
+    chat_id = message.chat.id
     text = message.text
+
+    ensure_state_main(chat_id)
+
     if text == "Я мастер":
-        user_states[message.chat.id] = STATE_ROLE_MASTER
-        show_master_main_menu(bot, message)
+        user_states[chat_id] = STATE_ROLE_MASTER
+        try:
+            show_master_main_menu(bot, message)
+            logger.info(f"👷 Пользователь {chat_id} выбрал роль: МАСТЕР")
+        except Exception as e:
+            logger.error(f"Ошибка показа меню мастера для {chat_id}: {e}")
+            bot.send_message(chat_id, "Произошла ошибка при загрузке меню. Попробуйте позже.")
         return
 
     if text == "Я администратор":
-        user_states[message.chat.id] = STATE_ROLE_ADMIN
-        # Теперь функция уже импортирована в начале файла — никаких локальных импортов
-        show_admin_main_menu(bot, message)
+        user_states[chat_id] = STATE_ROLE_ADMIN
+        try:
+            show_admin_main_menu(bot, message)
+            logger.info(f"👮 Пользователь {chat_id} выбрал роль: АДМИН")
+        except Exception as e:
+            logger.error(f"Ошибка показа меню админа для {chat_id}: {e}")
+            bot.send_message(chat_id, "Произошла ошибка при загрузке меню. Попробуйте позже.")
         return
 
+    # Если нажали что-то лишнее в главном меню
+    bot.send_message(chat_id, "Пожалуйста, выберите роль с помощью кнопок ниже.")
 
+
+# --- ЗАПУСК ---
 if __name__ == '__main__':
-    print("\n=== БОТ ЗАПУЩЕН И ОЖИДАЕТ СООБЩЕНИЙ ===")
+    logger.info("🚀 === БОТ ЗАПУЩЕН И ОЖИДАЕТ СООБЩЕНИЙ ===")
     try:
+        # non_stop=True перезапускает polling при ошибках сети
+        # timeout=60 увеличивает время ожидания ответа от Telegram (стандарт 30 сек)
         bot.polling(non_stop=True, timeout=60)
     except Exception as e:
-        print("=== ПРОИЗОШЛА ОШИБКА ВО ВРЕМЯ polling ===")
-        traceback.print_exc()
+        logger.critical(f"💥 Критический сбой работы polling: {e}", exc_info=True)
+        sys.exit(1)

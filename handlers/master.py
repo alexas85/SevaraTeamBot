@@ -26,6 +26,17 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
     def handle_master_menu(message):
         text = message.text
 
+        if text == "📜 Регламенты и штрафы":
+            show_regulations_categories(bot, message)
+            return
+
+            # --- ДОБАВЛЕННЫЙ БЛОК: Обработка выбора категории из кнопок ---
+        if text.startswith("📂 "):
+            category_name = text.replace("📂 ", "")
+            # Вызываем функцию показа правил внутри категории
+            show_regulations_by_category(bot, message, category_name)
+            return
+
         if text == "🔙 Назад в меню мастера":
             ensure_state_main(message.chat.id)
             user_states[message.chat.id] = STATE_MAIN
