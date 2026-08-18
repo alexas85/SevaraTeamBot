@@ -1,188 +1,76 @@
-# handlers/master.py
 import telebot
 from telebot import types
-from database import get_instruction, get_conn
-from config import STATE_ROLE_MASTER, STATE_MAIN
-
-import logging
-logger = logging.getLogger('SevaraTeamBot')
+from database import seed_data
 
 
-def show_master_main_menu(bot: telebot.TeleBot, message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-    btns = [
-        types.KeyboardButton("✨ Стерилизация и СанПиН"),
-        types.KeyboardButton("💨 Чистота и оборудование"),
-        types.KeyboardButton("📜 Регламенты и штрафы")
-    ]
-    btns.append(types.KeyboardButton("🔙 Назад в меню мастера"))
-    markup.add(*btns)
-    bot.send_message(message.chat.id, "Меню мастера студии Sevara:", reply_markup=markup)
+def register_master_handlers(bot):
+    @bot.message_handler(commands=['seed'])
+    def handle_seed(message):
+        try:
+            count = seed_data()
+            bot.reply_to(message, f"✅ Успешно! В базу добавлено {count} правил.")
+        except Exception as e:
+            bot.reply_to(message, f"❌ Ошибка при наполнении базы: {e}")
 
-
-def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
-    def ensure_state_main(chat_id):
-        if chat_id not in user_states:
-            user_states[chat_id] = STATE_MAIN
-
-    @bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == STATE_ROLE_MASTER)
-    def handle_master_menu(message):
-        text = message.text
-
-        if text == "📜 Регламенты и штрафы":
-            show_regulations_categories(bot, message)
-            return
-
-            # --- ДОБАВЛЕННЫЙ БЛОК: Обработка выбора категории из кнопок ---
-        if text.startswith("📂 "):
-            category_name = text.replace("📂 ", "")
-            # Вызываем функцию показа правил внутри категории
-            show_regulations_by_category(bot, message, category_name)
-            return
-
-        if text == "🔙 Назад в меню мастера":
-            ensure_state_main(message.chat.id)
-            user_states[message.chat.id] = STATE_MAIN
-            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            btn_master = types.KeyboardButton("Я мастер")
-            btn_admin = types.KeyboardButton("Я администратор")
-            markup.add(btn_master, btn_admin)
-            bot.send_message(
-                message.chat.id,
-                "Ты вернулся к выбору роли:",
-                reply_markup=markup
-            )
-            return
-
-        if text == "✨ Стерилизация и СанПиН":
-            row = get_instruction("master", "sterilization_sanpin")
-            if row and row.get("text_content"):
-                bot.send_message(message.chat.id, row["text_content"], parse_mode="Markdown")
-            else:
-                bot.send_message(message.chat.id, "Инструкция по стерилизации временно недоступна.")
-            show_master_back_buttons(bot, message)
-            return
-
-        if text == "💨 Чистота и оборудование":
-            row = get_instruction("master", "cleanliness")
-            has_content = False
-            if row:
-                if row.get("text_content"):
-                    bot.send_message(message.chat.id, row["text_content"])
-                    has_content = True
-                if row.get("description"):
-                    bot.send_message(message.chat.id, f"📝 Описание: {row['description']}")
-                    has_content = True
-                if row.get("photo_file_id"):
-                    bot.send_photo(message.chat.id, photo=row["photo_file_id"])
-                    has_content = True
-                if row.get("video_file_id"):
-                    bot.send_video(message.chat.id, video=row["video_file_id"])
-                    has_content = True
-
-            if not has_content:
-                bot.send_message(message.chat.id, "Пока нет материалов по этой теме.")
-            show_master_back_buttons(bot, message)
-            return
-
-        if text == "📜 Регламенты и штрафы":
-            show_regulations_categories(bot, message)
-            return
-
-    @bot.callback_query_handler(func=lambda call: call.data.startswith("reg_detail_"))
-    def callback_handler(call):
-        handle_regulation_callback(bot, call)
-
-
-def show_regulations_categories(bot, message):
-    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-
-    try:
+    @bot.message_handler(func=lambda message: message.text == "Регламенты и штрафы")
+    def show_regulations_menu(message):
+        from database import get_conn
         with get_conn() as conn:
             cur = conn.cursor()
-            # Берем уникальные категории
-            cur.execute("SELECT DISTINCT category FROM regulations ORDER BY category")
+            # Получаем уникальные категории
+            cur.execute("SELECT DISTINCT category FROM regulations ORDER BY sort_order")
             categories = cur.fetchall()
 
         if not categories:
-            # Если пусто - пишем предупреждение и кнопку назад
-            markup.add(telebot.types.KeyboardButton("🔙 Назад в меню мастера"))
-            bot.send_message(
-                message.chat.id,
-                "⚠️ Внимание: В базе данных нет категорий регламентов!\n"
-                "Нажми кнопку ниже или попроси админа запустить команду /seed в чате.",
-                reply_markup=markup
+            bot.reply_to(
+                message,
+                "⚠️ В базе данных нет категорий регламентов!\n"
+                "Запустите скрипт наполнения командой /seed в главном меню."
             )
             return
 
-        # Строим кнопки из категорий
-        for row in categories:
-            cat_name = row  # <--- Берем первый элемент кортежа
-            markup.add(telebot.types.KeyboardButton(f"📂 {cat_name}"))
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
 
-        markup.add(telebot.types.KeyboardButton("🔙 Назад в меню мастера"))
+        # ИСПРАВЛЕНИЕ: берем row, так как fetchall возвращает кортежи
+        for row in categories:
+            cat_name = row
+            markup.add(types.KeyboardButton(f"📂 {cat_name}"))
+
+        markup.add(types.KeyboardButton("🔙 Назад в меню мастера"))
 
         bot.send_message(
             message.chat.id,
-            "Выберите категорию правил:",
+            "Выберите категорию регламентов:",
             reply_markup=markup
         )
-    except Exception as e:
-        logger.error(f"Ошибка при получении категорий регламентов: {e}")
-        bot.send_message(message.chat.id, "Произошла ошибка при загрузке категорий.")
 
-def show_regulations_by_category(bot: telebot.TeleBot, message, category_name):
-    """Показывает список правил внутри категории"""
-    clean_category = category_name.replace("📂 ", "")
-    markup = types.InlineKeyboardMarkup(row_width=1)
+    @bot.message_handler(func=lambda message: message.text.startswith("📂 "))
+    def show_regulations_category(message):
+        category_name = message.text.replace("📂 ", "")
+        from database import get_conn
 
-    with get_conn() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT id, title FROM regulations WHERE category = ? ORDER BY sort_order", (clean_category,))
-        rows = cur.fetchall()
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT title, full_text FROM regulations WHERE category = ? ORDER BY sort_order",
+                        (category_name,))
+            items = cur.fetchall()
 
-        for reg_id, title in rows:
-            btn = types.InlineKeyboardButton(title, callback_data=f"reg_detail_{reg_id}")
-            markup.add(btn)
+        if not items:
+            bot.reply_to(message, "В этой категории пока нет правил.")
+            return
 
-    bot.send_message(
-        message.chat.id,
-        f"Правила категории: <b>{clean_category}</b>\nВыберите пункт для подробностей:",
-        reply_markup=markup,
-        parse_mode="HTML"
-    )
+        response_text = f"📜 Категория: {category_name}\n\n"
+        for item in items:
+            response_text += f"🔹 <b>{item['title']}</b>\n{item['full_text']}\n\n"
 
+        bot.send_message(message.chat.id, response_text, parse_mode='HTML')
 
-def handle_regulation_callback(bot: telebot.TeleBot, call):
-    """Обрабатывает нажатие на конкретное правило"""
-    if call.data.startswith("reg_detail_"):
-        try:
-            reg_id = int(call.data.split("_")[-1])
+    @bot.message_handler(func=lambda message: message.text == "🔙 Назад в меню мастера")
+    def go_back_to_master_menu(message):
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("✨ Стерилизация и СанПиН"))
+        markup.add(types.KeyboardButton("🧹 Чистота и оборудование"))
+        markup.add(types.KeyboardButton("📜 Регламенты и штрафы"))
+        markup.add(types.KeyboardButton("🔙 Назад в главное меню"))
 
-            with get_conn() as conn:
-                cur = conn.cursor()
-                cur.execute("SELECT full_text FROM regulations WHERE id = ?", (reg_id,))
-                row = cur.fetchone()
-
-                if row:
-                    text_content = row[0]
-
-                    bot.answer_callback_query(call.id)
-                    bot.send_message(call.message.chat.id, text_content, parse_mode="HTML")
-                else:
-                    bot.answer_callback_query(call.id, "Правило не найдено", show_alert=True)
-        except Exception as e:
-            print(f"Error in regulation callback: {e}")
-            bot.answer_callback_query(call.id, "Произошла ошибка при загрузке правила", show_alert=True)
-
-
-def show_master_back_buttons(bot: telebot.TeleBot, message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    btn_back = types.KeyboardButton("🔙 Назад в меню мастера")
-    markup.add(btn_back)
-
-    bot.send_message(
-        message.chat.id,
-        "Нажмите «Назад», чтобы вернуться в меню мастера.",
-        reply_markup=markup
-    )
+        bot.send_message(message.chat.id, "Меню мастера студии Sevara:", reply_markup=markup)

@@ -3,190 +3,86 @@ import sys
 import logging
 import traceback
 import telebot
-from dotenv import load_dotenv
+from telebot import types
 
-# Импорты из локальных модулей
-from config import STATE_MAIN, STATE_ROLE_MASTER, STATE_ROLE_ADMIN
-from handlers.master import register_master_handlers, show_master_main_menu
-from handlers.admin import register_admin_handlers, show_admin_main_menu
-from database import init_db, seed_data
+# Импорты из наших модулей
+from database import init_db, check_and_seed_data, seed_data
+from handlers.master import register_master_handlers
 
-
-# --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
-LOG_FORMAT = '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s'
-DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
-
-logger = logging.getLogger('SevaraTeamBot')
-logger.setLevel(logging.INFO)
-
-# 1. Handler для вывода в консоль (stdout) — критично для Dada Console
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-console_formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
-console_handler.setFormatter(console_formatter)
-
-# 2. Handler для записи в файл (для детального расследования)
-try:
-    file_handler = logging.FileHandler('bot.log', encoding='utf-8')
-    file_handler.setLevel(logging.DEBUG)
-    file_formatter = logging.Formatter(f'{LOG_FORMAT} | {DATE_FORMAT}')
-    file_handler.setFormatter(file_formatter)
-    logger.addHandler(file_handler)
-except Exception as e:
-    # Если нет прав на запись файла, логируем ошибку в консоль
-    print(f"⚠️ Не удалось создать файл логов bot.log: {e}")
-
-logger.addHandler(console_handler)
-
-# Загружаем переменные окружения
-load_dotenv()
-
-# --- ПРОВЕРКА ТОКЕНА ---
-TOKEN = os.getenv("TELEGRAM_API_TOKEN")
-
-if not TOKEN:
-    logger.critical("❌ КРИТИЧЕСКАЯ ОШИБКА: TELEGRAM_API_TOKEN не найден!")
-    logger.critical("Проверьте настройки переменных окружения в Dada Console.")
+# --- КОНФИГУРАЦИЯ ---
+API_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
+if not API_TOKEN:
+    print("❌ Ошибка: Не найден токен TELEGRAM_API_TOKEN в переменных окружения!")
     sys.exit(1)
 
-logger.info("✅ Токен успешно загружен.")
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Инициализация бота
-bot = telebot.TeleBot(TOKEN)
-
-# Хранилище состояний пользователей: chat_id -> state
-user_states = {}
+bot = telebot.TeleBot(API_TOKEN)
 
 
-def ensure_state_main(chat_id):
-    """Гарантирует, что у пользователя есть состояние STATE_MAIN."""
-    if chat_id not in user_states:
-        user_states[chat_id] = STATE_MAIN
-
-
-# --- ИНИЦИАЛИЗАЦИЯ СИСТЕМЫ ---
-logger.info("🗄️ Инициализация базы данных...")
-try:
-    # 1. Создаем таблицы
-    init_db()
-    logger.info("✅ Таблицы БД проверены/созданы.")
-
-    # 2. АВТОМАТИЧЕСКОЕ НАПОЛНЕНИЕ ДАННЫМИ
-    # ВНИМАНИЕ: Если функции check_and_seed_data нет в database.py, этот код вызовет ошибку.
-    # Так как у тебя есть seed_data(), лучше пока закомментировать это и использовать /seed
-    # check_and_seed_data()
-
-    logger.info("⚠️ Автонаполнение пропущено. Используйте команду /seed для заполнения базы.")
-
-except Exception as e:
-    logger.critical(f"❌ FATAL ERROR: Не удалось инициализировать БД: {e}")
-    logger.critical(traceback.format_exc())
-    sys.exit(1)
-
-logger.info("📜 Регистрация хендлеров (мастера и админы)...")
-try:
-    register_master_handlers(bot, user_states)
-    register_admin_handlers(bot, user_states)
-    logger.info("✅ Хендлеры успешно зарегистрированы.")
-except Exception as e:
-    logger.critical(f"❌ FATAL ERROR: Ошибка при регистрации хендлеров: {e}")
-    logger.critical(traceback.format_exc())
-    sys.exit(1)
-
-
-# --- ХЕНДЛЕРЫ БОТА ---
+# --- РЕГИСТРАЦИЯ ХЕНДЛЕРОВ ---
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    """Обработчик команды /start"""
-    chat_id = message.chat.id
-    ensure_state_main(chat_id)
-    user_states[chat_id] = STATE_MAIN
-
-    welcome_text = (
-        "Привет! Добро пожаловать в команду студии Sevara. "
-        "Этот бот поможет тебе быстро изучить наши стандарты, правила "
-        "и сделать твою работу комфортной и безопасной. "
-        "Выбери свою роль ниже:"
-    )
-
-    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn_master = telebot.types.KeyboardButton("Я мастер")
-    btn_admin = telebot.types.KeyboardButton("Я администратор")
-    markup.add(btn_master, btn_admin)
-
-    try:
-        bot.send_message(chat_id, welcome_text, reply_markup=markup)
-        logger.info(f"👤 Пользователь {chat_id} нажал /start")
-    except Exception as e:
-        logger.error(f"Ошибка отправки приветствия пользователю {chat_id}: {e}")
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("👷 Я мастер"))
+    # Можно добавить другие роли позже
+    bot.reply_to(message,
+                 "Привет! Добро пожаловать в команду студии Sevara. Этот бот поможет тебе быстро изучить наши стандарты, правила и сделать твою работу комфортной и безопасной. Выбери свою роль ниже:",
+                 reply_markup=markup)
 
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.chat.id) == STATE_MAIN)
-def handle_main_menu(message):
-    """Обработка выбора роли в главном меню"""
-    chat_id = message.chat.id
-    text = message.text
-
-    ensure_state_main(chat_id)
-
-    if text == "Я мастер":
-        user_states[chat_id] = STATE_ROLE_MASTER
-        try:
-            show_master_main_menu(bot, message)
-            logger.info(f"👷 Пользователь {chat_id} выбрал роль: МАСТЕР")
-        except Exception as e:
-            logger.error(f"Ошибка показа меню мастера для {chat_id}: {e}")
-            bot.send_message(chat_id, "Произошла ошибка при загрузке меню. Попробуйте позже.")
-        return
-
-    if text == "Я администратор":
-        user_states[chat_id] = STATE_ROLE_ADMIN
-        try:
-            show_admin_main_menu(bot, message)
-            logger.info(f"👮 Пользователь {chat_id} выбрал роль: АДМИН")
-        except Exception as e:
-            logger.error(f"Ошибка показа меню админа для {chat_id}: {e}")
-            bot.send_message(chat_id, "Произошла ошибка при загрузке меню. Попробуйте позже.")
-        return
-
-    # Если нажали что-то лишнее в главном меню
-    bot.send_message(chat_id, "Пожалуйста, выберите роль с помощью кнопок ниже.")
+@bot.message_handler(func=lambda message: message.text == "👷 Я мастер")
+def master_role_selected(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("✨ Стерилизация и СанПиН"))
+    markup.add(types.KeyboardButton("🧹 Чистота и оборудование"))
+    markup.add(types.KeyboardButton("📜 Регламенты и штрафы"))
+    markup.add(types.KeyboardButton("🔙 Назад в главное меню"))
+    bot.send_message(message.chat.id, "Меню мастера студии Sevara:", reply_markup=markup)
 
 
-# --- ЗАПУСК ---
-@bot.message_handler(commands=['seed'])
-def handle_seed_command(message):
-    """Команда для ручного наполнения базы данными (для админов)"""
-    chat_id = message.chat.id
+@bot.message_handler(func=lambda message: message.text == "🔙 Назад в главное меню")
+def back_to_start(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("👷 Я мастер"))
+    bot.send_message(message.chat.id, "Выберите роль:", reply_markup=markup)
 
-    # Простая защита: только для тебя (замени 123456789 на свой Chat ID из Telegram)
-    # Если хочешь, чтобы работало для всех, удали эту проверку if
-    if chat_id != 1320620131:
-        bot.send_message(chat_id, "❌ Доступ запрещен. Эта команда только для разработчика.")
-        return
 
-    bot.send_message(chat_id, "⏳ Начинаю наполнение базы данных регламентами...")
+# Регистрируем хендлеры для мастеров
+register_master_handlers(bot)
 
-    try:
-        count = seed_data()
-        bot.send_message(
-            chat_id,
-            f"✅ Успешно! В базу добавлено {count} правил.\n"
-            f"Теперь попробуй снова нажать «Регламенты и штрафы» в меню мастера."
-        )
-        logger.info(f"💾 Пользователь {chat_id} запустил ручное наполнение базы. Добавлено записей: {count}")
-    except Exception as e:
-        logger.error(f"Ошибка при ручном наполнении базы: {e}")
-        bot.send_message(chat_id, f"❌ Произошла ошибка при наполнении: {str(e)}")
-
+# --- ЗАПУСК И ИНИЦИАЛИЗАЦИЯ ---
 
 if __name__ == '__main__':
     logger.info("🚀 === БОТ ЗАПУЩЕН И ОЖИДАЕТ СООБЩЕНИЙ ===")
+
     try:
-        # non_stop=True перезапускает polling при ошибках сети
+        # 1. Создаем таблицы БД
+        init_db()
+        logger.info("✅ Таблицы БД проверены/созданы.")
+
+        # 2. ВАЖНО: Если хочешь автонаполнение при старте - раскомментируй строку ниже.
+        # Но лучше использовать команду /seed вручную, чтобы контролировать процесс.
+        # result = check_and_seed_data()
+        # logger.info(f"💾 Автонаполнение БД: {result}")
+
+        logger.info("⚠️ Автонаполнение пропущено. Используйте команду /seed для заполнения базы.")
+
+        # 3. Запуск polling
+        # non_stop=True перезапускает бота при ошибках сети
         # timeout=60 увеличивает время ожидания ответа от Telegram
         bot.polling(non_stop=True, timeout=60)
+
     except Exception as e:
-        logger.critical(f"💥 Критический сбой работы polling: {e}", exc_info=True)
+        # ИСПРАВЛЕНИЕ ОШИБКИ ИЗ ЛОГОВ:
+        # Мы НЕ передаем {e} в строку формата.
+        # exc_info=True сам достанет и ошибку, и стек трейса (traceback).
+        logger.critical("💥 Критический сбой работы polling", exc_info=True)
         sys.exit(1)
