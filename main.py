@@ -152,6 +152,32 @@ def handle_main_menu(message):
 
 
 # --- ЗАПУСК ---
+@bot.message_handler(commands=['seed'])
+def handle_seed_command(message):
+    """Команда для ручного наполнения базы данными (для админов)"""
+    chat_id = message.chat.id
+
+    # Простая защита: только для тебя (замени 123456789 на свой Chat ID из Telegram)
+    # Если хочешь, чтобы работало для всех, удали эту проверку if
+    if chat_id != 1320620131:
+        bot.send_message(chat_id, "❌ Доступ запрещен. Эта команда только для разработчика.")
+        return
+
+    bot.send_message(chat_id, "⏳ Начинаю наполнение базы данных регламентами...")
+
+    try:
+        count = seed_data()
+        bot.send_message(
+            chat_id,
+            f"✅ Успешно! В базу добавлено {count} правил.\n"
+            f"Теперь попробуй снова нажать «Регламенты и штрафы» в меню мастера."
+        )
+        logger.info(f"💾 Пользователь {chat_id} запустил ручное наполнение базы. Добавлено записей: {count}")
+    except Exception as e:
+        logger.error(f"Ошибка при ручном наполнении базы: {e}")
+        bot.send_message(chat_id, f"❌ Произошла ошибка при наполнении: {str(e)}")
+
+
 if __name__ == '__main__':
     logger.info("🚀 === БОТ ЗАПУЩЕН И ОЖИДАЕТ СООБЩЕНИЙ ===")
     try:

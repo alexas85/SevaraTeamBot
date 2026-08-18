@@ -94,44 +94,44 @@ def register_master_handlers(bot: telebot.TeleBot, user_states: dict):
         handle_regulation_callback(bot, call)
 
 
-def show_regulations_categories(bot: telebot.TeleBot, message):
-    """Показывает кнопки с категориями штрафов"""
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+def show_regulations_categories(bot, message):
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
 
     try:
         with get_conn() as conn:
             cur = conn.cursor()
-            # Используем DISTINCT, чтобы получить уникальные категории
+            # Берем уникальные категории
             cur.execute("SELECT DISTINCT category FROM regulations ORDER BY category")
             categories = cur.fetchall()
 
         if not categories:
-            # ВАЖНО: Это сообщение поможет тебе понять, что база пуста
+            # Если пусто - пишем предупреждение и кнопку назад
+            markup.add(telebot.types.KeyboardButton("🔙 Назад в меню мастера"))
             bot.send_message(
                 message.chat.id,
                 "⚠️ Внимание: В базе данных нет категорий регламентов!\n"
-                "Запустите скрипт наполнения seed_regulations.py на сервере.",
+                "Нажми кнопку ниже или попроси админа запустить команду /seed в чате.",
                 reply_markup=markup
             )
             return
 
+        # Строим кнопки из категорий
         for row in categories:
-            cat_name = row  # row — это кортеж, берём первый элемент
-            markup.add(types.KeyboardButton(f"📂 {cat_name}"))
+            cat_name = row
+            # Добавляем эмодзи 📂 к названию
+            markup.add(telebot.types.KeyboardButton(f"📂 {cat_name}"))
 
-        markup.add(types.KeyboardButton("🔙 Назад в меню мастера"))
+        markup.add(telebot.types.KeyboardButton("🔙 Назад в меню мастера"))
 
         bot.send_message(
             message.chat.id,
-            "Выберите категорию правил, чтобы узнать детали:",
+            "Выберите категорию правил:",
             reply_markup=markup
         )
     except Exception as e:
         logger.error(f"Ошибка при получении категорий регламентов: {e}")
-        bot.send_message(
-            message.chat.id,
-            f"Произошла ошибка при загрузке категорий: {str(e)}"
-        )
+        bot.send_message(message.chat.id, "Произошла ошибка при загрузке категорий.")
+
 def show_regulations_by_category(bot: telebot.TeleBot, message, category_name):
     """Показывает список правил внутри категории"""
     clean_category = category_name.replace("📂 ", "")
