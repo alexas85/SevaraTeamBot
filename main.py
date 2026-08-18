@@ -6,7 +6,7 @@ import telebot
 from telebot import types
 
 # Импорты из наших модулей
-from database import init_db, check_and_seed_data, seed_data
+from database import init_db, seed_data
 from handlers.master import register_master_handlers
 
 # --- КОНФИГУРАЦИЯ ---
