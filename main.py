@@ -9,35 +9,32 @@ from dotenv import load_dotenv
 from config import STATE_MAIN, STATE_ROLE_MASTER, STATE_ROLE_ADMIN
 from handlers.master import register_master_handlers, show_master_main_menu
 from handlers.admin import register_admin_handlers, show_admin_main_menu
-from database import init_db
+from database import init_db, check_and_seed_data
 
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
-# Формат: Время | Уровень | Сообщение
 LOG_FORMAT = '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s'
 DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
 
-# Создаем логгер
 logger = logging.getLogger('SevaraTeamBot')
 logger.setLevel(logging.INFO)
 
-# 1. Handler для вывода в консоль (stdout) — критично для Dada Console и других хостингов
+# 1. Handler для вывода в консоль (stdout) — критично для Dada Console
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.INFO)
 console_formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
 console_handler.setFormatter(console_formatter)
 
-# 2. Handler для записи в файл (на случай, если консоль очищается или нужно детальное расследование)
+# 2. Handler для записи в файл (для детального расследования)
 try:
     file_handler = logging.FileHandler('bot.log', encoding='utf-8')
-    file_handler.setLevel(logging.DEBUG)  # В файл пишем всё, включая отладку
+    file_handler.setLevel(logging.DEBUG)
     file_formatter = logging.Formatter(f'{LOG_FORMAT} | {DATE_FORMAT}')
     file_handler.setFormatter(file_formatter)
     logger.addHandler(file_handler)
 except Exception as e:
-    # Если нет прав на запись файла (редкий случай на некоторых хостингах), логируем ошибку в консоль
+    # Если нет прав на запись файла, логируем ошибку в консоль
     print(f"⚠️ Не удалось создать файл логов bot.log: {e}")
 
-# Добавляем консольный хендлер
 logger.addHandler(console_handler)
 
 # Загружаем переменные окружения
@@ -47,8 +44,8 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_API_TOKEN")
 
 if not TOKEN:
-    logger.critical("❌ КРИТИЧЕСКАЯ ОШИБКА: TELEGRAM_API_TOKEN не найден в переменных окружения!")
-    logger.critical("Проверьте файл .env или настройки переменных окружения в Dada Console.")
+    logger.critical("❌ КРИТИЧЕСКАЯ ОШИБКА: TELEGRAM_API_TOKEN не найден!")
+    logger.critical("Проверьте настройки переменных окружения в Dada Console.")
     sys.exit(1)
 
 logger.info("✅ Токен успешно загружен.")
@@ -69,10 +66,17 @@ def ensure_state_main(chat_id):
 # --- ИНИЦИАЛИЗАЦИЯ СИСТЕМЫ ---
 logger.info("🗄️ Инициализация базы данных...")
 try:
+    # 1. Создаем таблицы, если их нет
     init_db()
-    logger.info("✅ База данных готова (таблицы проверены/созданы).")
+    logger.info("✅ Таблицы БД проверены/созданы.")
+
+    # 2. АВТОМАТИЧЕСКОЕ НАПОЛНЕНИЕ ДАННЫМИ (СЕЙДИНГ)
+    # Если таблица regulations пуста, эта функция заполнит её тестовыми данными
+    check_and_seed_data()
+    logger.info("✅ Проверка и наполнение данных выполнено.")
+
 except Exception as e:
-    logger.critical(f"❌ ФATAL ERROR: Не удалось инициализировать БД: {e}")
+    logger.critical(f"❌ FATAL ERROR: Не удалось инициализировать БД: {e}")
     logger.critical(traceback.format_exc())
     sys.exit(1)
 
@@ -82,7 +86,7 @@ try:
     register_admin_handlers(bot, user_states)
     logger.info("✅ Хендлеры успешно зарегистрированы.")
 except Exception as e:
-    logger.critical(f"❌ ФATAL ERROR: Ошибка при регистрации хендлеров: {e}")
+    logger.critical(f"❌ FATAL ERROR: Ошибка при регистрации хендлеров: {e}")
     logger.critical(traceback.format_exc())
     sys.exit(1)
 
@@ -152,7 +156,7 @@ if __name__ == '__main__':
     logger.info("🚀 === БОТ ЗАПУЩЕН И ОЖИДАЕТ СООБЩЕНИЙ ===")
     try:
         # non_stop=True перезапускает polling при ошибках сети
-        # timeout=60 увеличивает время ожидания ответа от Telegram (стандарт 30 сек)
+        # timeout=60 увеличивает время ожидания ответа от Telegram
         bot.polling(non_stop=True, timeout=60)
     except Exception as e:
         logger.critical(f"💥 Критический сбой работы polling: {e}", exc_info=True)
