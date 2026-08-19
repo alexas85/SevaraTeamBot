@@ -99,22 +99,33 @@ def register_master_handlers(bot):
             bot.reply_to(message, f"Ошибка чтения: {e}")
 
     # --- ОБРАБОТКА КНОПОК ШТРАФОВ (новое) ---
+    # --- ОБРАБОТКА КНОПОК ШТРАФОВ (ИСПРАВЛЕННАЯ ВЕРСИЯ) ---
     @bot.message_handler(func=lambda message: message.text.startswith("⚖️ "))
     def show_penalty_category(message):
         category_display = message.text.replace("⚖️ ", "")
-        # Ищем файл по части названия
-        search_key = category_display.lower().replace(" ", "_").replace("-", "_")
 
-        target_file = None
-        for f in PENALTIES_DIR.iterdir():
-            if f.is_file() and f.suffix == ".txt":
-                # Проверяем, содержится ли ключ в имени файла
-                if search_key in f.name:
-                    target_file = f
-                    break
+        # СЛОВАРЬ СООТВЕТСТВИЙ: Кнопка -> Имя файла
+        # Если добавишь новую кнопку, просто добавь сюда строчку
+        penalty_map = {
+            "Качество и переделки": "quality_and_redo.txt",
+            "График и опоздания": "attendance.txt",
+            "Инструменты и имущество": "property_and_tools.txt",
+            "Стерильность и СанПиН": "hygiene_violations.txt",
+            "Деньги, чеки и жалобы": "cash_and_complaints.txt",
+            "Уборка рабочего места": "workplace_cleanliness.txt"
+        }
 
-        if not target_file:
-            bot.reply_to(message, f"Не удалось найти файл для категории: {category_display}")
+        filename = penalty_map.get(category_display)
+
+        if not filename:
+            bot.reply_to(message, f"❌ Неизвестная категория: {category_display}. Сообщите администратору.")
+            return
+
+        target_file = PENALTIES_DIR / filename
+
+        if not target_file.exists():
+            bot.reply_to(message,
+                         f"❌ Файл не найден: {filename}.\nПожалуйста, проверьте, загружен ли этот файл в папку data/penalties/.")
             return
 
         try:
