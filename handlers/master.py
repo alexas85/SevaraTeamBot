@@ -1,93 +1,79 @@
 import telebot
 from telebot import types
-from database import get_conn, seed_data
+from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent.parent  # подняться на 2 уровня вверх до корня проекта
+DATA_DIR = BASE_DIR / "data"
 
 def register_master_handlers(bot):
-    # 1. Команда /seed для наполнения базы
+
+    # Команда /seed — теперь ничего не делает, но можно оставить как заглушку
     @bot.message_handler(commands=['seed'])
     def handle_seed(message):
-        result = seed_data()
-        bot.reply_to(message, result)
+        bot.reply_to(message, "В этой версии данные хранятся в текстовых файлах (папка data/).")
 
-    # 2. Кнопка "Регламенты и штрафы"
+    # Кнопка "📜 Регламенты и штрафы" — показывает список категорий по файлам
     @bot.message_handler(func=lambda message: message.text == "📜 Регламенты и штрафы")
     def show_regulations_menu(message):
-        with get_conn() as conn:
-            cur = conn.cursor()
-            # Выбираем уникальные категории
-            cur.execute("SELECT DISTINCT category FROM regulations ORDER BY category")
-            categories = cur.fetchall()
+        if not DATA_DIR.exists():
+            bot.reply_to(message, "❌ Папка data/ не найдена. Проверьте структуру проекта.")
+            return
 
-        if not categories:
+        # Ищем файлы с префиксом regulations_
+        files = [f for f in DATA_DIR.iterdir() if f.is_file() and f.name.startswith("regulations_") and f.suffix == ".txt"]
+
+        if not files:
             bot.reply_to(
                 message,
-                "⚠️ В базе нет категорий регламентов!\n"
-                "Запустите команду /seed."
+                "⚠️ В папке data/ нет файлов регламентов.\n"
+                "Создайте хотя бы один файл вида regulations_<категория>.txt"
             )
             return
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
-
-        # ИСПРАВЛЕНИЕ ЗДЕСЬ: берем row['category'], а не просто row
-        for row in categories:
-            cat_name = row['category']
-            markup.add(types.KeyboardButton(f"📂 {cat_name}"))
+        for f in files:
+            # Из имени файла делаем читаемое название: regulations_hygiene.txt -> "Гигиена и санитария"
+            name = f.stem.replace("regulations_", "").replace("_", " ").title()
+            markup.add(types.KeyboardButton(f"📂 {name}"))
 
         markup.add(types.KeyboardButton("🔙 Назад в меню мастера"))
         bot.send_message(message.chat.id, "Выберите категорию регламентов:", reply_markup=markup)
 
-    # 3. Обработка выбора категории (кнопки вида "📂 Гигиена")
+    # Обработка кнопок вида "📂 Гигиена И Санитария" — читаем соответствующий файл
     @bot.message_handler(func=lambda message: message.text.startswith("📂 "))
     def show_regulations_category(message):
-        # Убираем префикс "📂 "
-        category_name = message.text.replace("📂 ", "")
+        category_display = message.text.replace("📂 ", "")
+        # Обратно превращаем читаемое имя в имя файла: "Гигиена И Санитария" -> regulations_гигиена_и_санитария.txt
+        # Но проще: искать по части имени. Для простоты сделаем так:
+        # Мы ищем файл, который содержит в имени часть категории в нижнем регистре без пробелов.
+        search_key = category_display.lower().replace(" ", "_")
 
-        with get_conn() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT title, full_text FROM regulations WHERE category = ? ORDER BY sort_order",
-                        (category_name,))
-            items = cur.fetchall()
+        target_file = None
+        for f in DATA_DIR.iterdir():
+            if f.is_file() and f.name.startswith("regulations_") and f.suffix == ".txt":
+                if search_key in f.name:
+                    target_file = f
+                    break
 
-        if not items:
-            bot.reply_to(message, "В этой категории пока нет правил.")
+        if not target_file:
+            bot.reply_to(message, f"❌ Не удалось найти файл для категории: {category_display}")
             return
 
-        response_text = f"📜 Категория: {category_name}\n\n"
-        for item in items:
-            # item - это sqlite3.Row, обращаемся по имени колонки
-            title = item['title']
-            text = item['full_text']
-            response_text += f"🔹 <b>{title}</b>\n{text}\n\n"
+        try:
+            content = target_file.read_text(encoding="utf-8")
+            bot.send_message(message.chat.id, content, parse_mode=None)  # parse_mode не нужен для простого текста
+        except Exception as e:
+            bot.reply_to(message, f"Ошибка чтения файла: {e}")
 
-        bot.send_message(message.chat.id, response_text, parse_mode='HTML')
-
-    # 4. Кнопка "Стерилизация и СанПиН" (Твоя подробная инструкция)
+    # Кнопка "✨ Стерилизация и СанПиН" — читает отдельный файл
     @bot.message_handler(func=lambda message: message.text == "✨ Стерилизация и СанПиН")
     def handle_sterilization(message):
-        text = (
-            "🧼 <b>Инструкция по дезинфекции, ПСО и стерилизации инструментов</b>\n\n"
-            "<b>1. Дезинфекция</b>\n"
-            "• Подготовка: Раскройте ножницы и кусачки полностью.\n"
-            "• Погружение: В УЗ-мойку с дезраствором.\n"
-            "• Экспозиция: 5 минут.\n\n"
-            "<b>2. ПСО (Предстерилизационная очистка)</b>\n"
-            "• Промывание: Под проточной водой 5–7 минут.\n"
-            "• Очистка фрез: Металлической щеточкой.\n\n"
-            "<b>3. Сушка</b>\n"
-            "• Просушивание: На чистой салфетке.\n"
-            "• Важно: Влажные инструменты в сухожар ЗАПРЕЩЕНО.\n\n"
-            "<b>4. Упаковка и документация</b>\n"
-            "• Комплектация: По крафт-пакетам.\n"
-            "• Маркировка: Дата, подпись, содержимое.\n"
-            "• Журнал: Внесите данные (сухожар, инструменты, пакеты, параметры 200°C/30мин, подпись).\n\n"
-            "<b>5. Стерилизация в сухожаре Beauty</b>\n"
-            "• Закладка: Пакеты на полочки без наложения.\n"
-            "• Контроль: Химические индикаторы в разные части камеры.\n"
-            "• Режим: 200 °C на 30 минут.\n\n"
-            "<b>6. Завершение</b>\n"
-            "• Фиксация: Вклейте отработавшие индикаторы в журнал.\n"
-            "• Охлаждение: Дайте инструментам остыть в пакетах.\n"
-            "• Готово: Остывшие инструменты стерильны."
-        )
-        bot.send_message(message.chat.id, text, parse_mode='HTML')
+        ster_file = DATA_DIR / "sterilization.txt"
+        if not ster_file.exists():
+            bot.reply_to(message, "❌ Файл data/sterilization.txt не найден.")
+            return
+        try:
+            text = ster_file.read_text(encoding="utf-8")
+            bot.send_message(message.chat.id, text, parse_mode=None)
+        except Exception as e:
+            bot.reply_to(message, f"Ошибка чтения sterilization.txt: {e}")

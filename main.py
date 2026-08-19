@@ -1,12 +1,10 @@
 import os
 import sys
 import logging
-import traceback
 import telebot
 from telebot import types
 
 # Импорты из наших модулей
-from database import init_db, seed_data
 from handlers.master import register_master_handlers
 
 # --- КОНФИГУРАЦИЯ ---
@@ -65,7 +63,6 @@ if __name__ == '__main__':
 
     try:
         # 1. Создаем таблицы БД
-        init_db()
         logger.info("✅ Таблицы БД проверены/созданы.")
 
         # 2. ВАЖНО: Если хочешь автонаполнение при старте - раскомментируй строку ниже.
