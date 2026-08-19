@@ -2,139 +2,155 @@ import telebot
 from telebot import types
 from pathlib import Path
 
+# --- КОНФИГУРАЦИЯ ПУТЕЙ ---
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 PENALTIES_DIR = DATA_DIR / "penalties"
 
 
 def register_master_handlers(bot):
-    @bot.message_handler(commands=['start'])
+    """
+    Функция регистрации всех хендлеров для бота.
+    Принимает объект bot как аргумент, чтобы избежать ошибок видимости.
+    """
+
+    # --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: ПРИВЕТСТВИЕ ---
     def send_welcome(message):
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("📜 Регламенты и штрафы")
-        markup.add("✨ Стерилизация и СанПиН")
-        bot.reply_to(message, "Выберите раздел:", reply_markup=markup)
+        markup = types.InlineKeyboardMarkup(row_width=1)
 
-    # --- ГЛАВНОЕ МЕНЮ ШТРАФОВ И РЕГЛАМЕНТОВ ---
-    @bot.message_handler(func=lambda message: message.text == "📜 Регламенты и штрафы")
-    def show_main_regulations_menu(message):
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("📖 Регламенты (правила работы)")
-        markup.add("⚠️ Штрафы и санкции")
-        markup.add("🔙 Назад в главное меню")
-        bot.send_message(message.chat.id, "Что хотите посмотреть?", reply_markup=markup)
+        btn_regulations = types.InlineKeyboardButton("📜 Регламенты и правила", callback_data="menu_regulations")
+        btn_penalties = types.InlineKeyboardButton("⚠️ Штрафы и санкции", callback_data="menu_penalties")
+        btn_faq = types.InlineKeyboardButton("❓ Частые вопросы (FAQ)", callback_data="show_faq")
+        btn_support = types.InlineKeyboardButton("🆘 Помощь администратора", url="https://t.me/admin_sevara")
 
-    # --- ПОДМЕНЮ РЕГЛАМЕНТОВ (старый функционал) ---
-    @bot.message_handler(func=lambda message: message.text == "📖 Регламенты (правила работы)")
-    def show_regulations_submenu(message):
-        if not DATA_DIR.exists():
-            bot.reply_to(message, "❌ Папка data/ не найдена.")
-            return
+        markup.add(btn_regulations, btn_penalties, btn_faq, btn_support)
 
-        files = [f for f in DATA_DIR.iterdir() if
-                 f.is_file() and f.name.startswith("regulations_") and f.suffix == ".txt"]
-        if not files:
-            bot.reply_to(message, "❌ Нет файлов регламентов.")
-            return
+        welcome_text = (
+            f"👋 Привет, {message.from_user.first_name}! Добро пожаловать в *SevaraTeamBot*! ✨\n\n"
+            "Я твой помощник в салоне Sevara. Здесь ты найдешь все правила, регламенты и систему штрафов.\n"
+            "Выбирай нужный раздел ниже."
+        )
 
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        for f in files:
-            name = f.stem.replace("regulations_", "").replace("_", " ").title()
-            markup.add(f"📂 {name}")
-        markup.add("🔙 Назад")
-        bot.send_message(message.chat.id, "Выберите категорию правил:", reply_markup=markup)
+        bot.send_message(
+            message.chat.id,
+            welcome_text,
+            parse_mode="Markdown",
+            reply_markup=markup
+        )
 
-    # --- ПОДМЕНЮ ШТРАФОВ (НОВЫЙ ФУНКЦИОНАЛ) ---
-    @bot.message_handler(func=lambda message: message.text == "⚠️ Штрафы и санкции")
-    def show_penalties_menu(message):
-        if not PENALTIES_DIR.exists():
-            bot.reply_to(message, "❌ Папка data/penalties/ не найдена. Проверьте файлы.")
-            return
+    # --- ХЕНДЛЕР: КОМАНДА /START ---
+    @bot.message_handler(commands=['start'])
+    def start_command(message):
+        send_welcome(message)
 
-        files = [f for f in PENALTIES_DIR.iterdir() if f.is_file() and f.suffix == ".txt"]
-        if not files:
-            bot.reply_to(message, "❌ Нет файлов со штрафами.")
-            return
-
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-
-        # Формируем понятные названия кнопок из имен файлов
-        for f in files:
-            # Убираем префикс penalties_ и расширение, делаем читаемым
-            raw_name = f.stem
-            # Простая замена для кнопок
-            display_name = raw_name.replace("quality_and_redo", "Качество и переделки") \
-                .replace("attendance", "График и опоздания") \
-                .replace("property_and_tools", "Инструменты и имущество") \
-                .replace("hygiene_violations", "Стерильность и СанПиН") \
-                .replace("cash_and_complaints", "Деньги, чеки и жалобы") \
-                .replace("workplace_cleanliness", "Уборка рабочего места")
-
-            markup.add(f"⚖️ {display_name}")
-
-        markup.add("🔙 Назад")
-        bot.send_message(message.chat.id, "Выберите категорию нарушений и штрафов:", reply_markup=markup)
-
-    # --- ОБРАБОТКА КНОПОК РЕГЛАМЕНТОВ (старое) ---
-    @bot.message_handler(func=lambda message: message.text.startswith("📂 "))
-    def show_regulations_category(message):
-        category_display = message.text.replace("📂 ", "")
-        search_key = category_display.lower().replace(" ", "_")
-        target_file = None
-
-        for f in DATA_DIR.iterdir():
-            if f.is_file() and f.name.startswith("regulations_") and f.suffix == ".txt":
-                if search_key in f.name:
-                    target_file = f
-                    break
-
-        if not target_file:
-            bot.reply_to(message, "Файл не найден.")
-            return
-
+    # --- ХЕНДЛЕР: ОБРАБОТКА CALLBACK (КНОПКИ) ---
+    @bot.callback_query_handler(func=lambda call: True)
+    def callback_handler(call):
         try:
-            content = target_file.read_text(encoding="utf-8")
-            bot.send_message(message.chat.id, content)
+            # Обработка кнопки "Регламенты"
+            if call.data == "menu_regulations":
+                files = [f for f in DATA_DIR.iterdir() if
+                         f.is_file() and f.name.startswith("regulations_") and f.suffix == ".txt"]
+                if not files:
+                    bot.answer_callback_query(call.id, "Нет файлов регламентов", show_alert=True)
+                    return
+
+                markup = types.InlineKeyboardMarkup(row_width=1)
+                for f in files:
+                    name = f.stem.replace("regulations_", "").replace("_", " ").title()
+                    markup.add(types.InlineKeyboardButton(f"📂 {name}", callback_data=f"file_reg_{f.name}"))
+
+                markup.add(types.InlineKeyboardButton("🔙 Назад в меню", callback_data="start_over"))
+
+                bot.edit_message_text(
+                    "Выберите категорию правил:",
+                    call.message.chat.id,
+                    call.message.message_id,
+                    reply_markup=markup
+                )
+
+            # Обработка кнопки "Штрафы"
+            elif call.data == "menu_penalties":
+                if not PENALTIES_DIR.exists():
+                    bot.answer_callback_query(call.id, "Папка со штрафами не найдена", show_alert=True)
+                    return
+
+                files = [f for f in PENALTIES_DIR.iterdir() if f.is_file() and f.suffix == ".txt"]
+                if not files:
+                    bot.answer_callback_query(call.id, "Нет файлов штрафов", show_alert=True)
+                    return
+
+                markup = types.InlineKeyboardMarkup(row_width=1)
+                name_map = {
+                    "quality_and_redo.txt": "Качество и переделки",
+                    "attendance.txt": "График и опоздания",
+                    "property_and_tools.txt": "Инструменты и имущество",
+                    "hygiene_violations.txt": "Стерильность и СанПиН",
+                    "cash_and_complaints.txt": "Деньги, чеки и жалобы",
+                    "workplace_cleanliness.txt": "Уборка рабочего места"
+                }
+
+                for f in files:
+                    display_name = name_map.get(f.name, f.stem.replace("_", " ").title())
+                    markup.add(types.InlineKeyboardButton(f"⚖️ {display_name}", callback_data=f"file_pen_{f.name}"))
+
+                markup.add(types.InlineKeyboardButton("🔙 Назад в меню", callback_data="start_over"))
+
+                bot.edit_message_text(
+                    "Выберите категорию нарушений и штрафов:",
+                    call.message.chat.id,
+                    call.message.message_id,
+                    reply_markup=markup
+                )
+
+            # Обработка кнопки "FAQ"
+            elif call.data == "show_faq":
+                faq_file = DATA_DIR / "faq.txt"
+                if faq_file.exists():
+                    content = faq_file.read_text(encoding="utf-8")
+                    bot.send_message(call.message.chat.id, content)
+                else:
+                    bot.answer_callback_query(call.id, "Файл FAQ пока не создан", show_alert=True)
+
+            # Обработка открытия файла регламентов
+            elif call.data.startswith("file_reg_"):
+                filename = call.data.replace("file_reg_", "")
+                path = DATA_DIR / filename
+                if path.exists():
+                    content = path.read_text(encoding="utf-8")
+                    bot.send_message(call.message.chat.id, content)
+                else:
+                    bot.answer_callback_query(call.id, "Файл потерян!", show_alert=True)
+
+            # Обработка открытия файла штрафов
+            elif call.data.startswith("file_pen_"):
+                filename = call.data.replace("file_pen_", "")
+                path = PENALTIES_DIR / filename
+                if path.exists():
+                    content = path.read_text(encoding="utf-8")
+                    bot.send_message(call.message.chat.id, content)
+                else:
+                    bot.answer_callback_query(call.id, "Файл потерян!", show_alert=True)
+
+            # Возврат в главное меню
+            elif call.data == "start_over":
+                send_welcome(call.message)
+                # Удаляем старое сообщение с кнопками, чтобы не было дублирования
+                try:
+                    bot.delete_message(call.message.chat.id, call.message.message_id)
+                except Exception:
+                    pass  # Игнорируем ошибку, если сообщение уже нельзя удалить
+
+            # Если ничего не подошло, просто отвечаем на нажатие (чтобы убрать часики загрузки)
+            else:
+                bot.answer_callback_query(call.id, "Действие обработано")
+
         except Exception as e:
-            bot.reply_to(message, f"Ошибка чтения: {e}")
+            # Логирование ошибки, чтобы бот не падал полностью
+            print(f"Ошибка в callback_handler: {e}")
+            bot.answer_callback_query(call.id, "Произошла ошибка, попробуйте позже", show_alert=True)
 
-    # --- ОБРАБОТКА КНОПОК ШТРАФОВ (новое) ---
-    # --- ОБРАБОТКА КНОПОК ШТРАФОВ (ИСПРАВЛЕННАЯ ВЕРСИЯ) ---
-    @bot.message_handler(func=lambda message: message.text.startswith("⚖️ "))
-    def show_penalty_category(message):
-        category_display = message.text.replace("⚖️ ", "")
-
-        # СЛОВАРЬ СООТВЕТСТВИЙ: Кнопка -> Имя файла
-        # Если добавишь новую кнопку, просто добавь сюда строчку
-        penalty_map = {
-            "Качество и переделки": "quality_and_redo.txt",
-            "График и опоздания": "attendance.txt",
-            "Инструменты и имущество": "property_and_tools.txt",
-            "Стерильность и СанПиН": "hygiene_violations.txt",
-            "Деньги, чеки и жалобы": "cash_and_complaints.txt",
-            "Уборка рабочего места": "workplace_cleanliness.txt"
-        }
-
-        filename = penalty_map.get(category_display)
-
-        if not filename:
-            bot.reply_to(message, f"❌ Неизвестная категория: {category_display}. Сообщите администратору.")
-            return
-
-        target_file = PENALTIES_DIR / filename
-
-        if not target_file.exists():
-            bot.reply_to(message,
-                         f"❌ Файл не найден: {filename}.\nПожалуйста, проверьте, загружен ли этот файл в папку data/penalties/.")
-            return
-
-        try:
-            content = target_file.read_text(encoding="utf-8")
-            bot.send_message(message.chat.id, content)
-        except Exception as e:
-            bot.reply_to(message, f"Ошибка чтения файла: {e}")
-
-    # --- КНОПКА СТЕРИЛИЗАЦИИ (старое) ---
+    # --- ХЕНДЛЕР: СТЕРИЛИЗАЦИЯ (для совместимости со старыми кнопками, если есть) ---
     @bot.message_handler(func=lambda message: message.text == "✨ Стерилизация и СанПиН")
     def handle_sterilization(message):
         ster_file = DATA_DIR / "sterilization.txt"
@@ -147,10 +163,7 @@ def register_master_handlers(bot):
         except Exception as e:
             bot.reply_to(message, f"Ошибка чтения: {e}")
 
-    # --- НАЗАД ---
-    @bot.message_handler(func=lambda message: message.text == "🔙 Назад" or message.text == "🔙 Назад в главное меню")
-    def go_back(message):
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("📜 Регламенты и штрафы")
-        markup.add("✨ Стерилизация и СанПиН")
-        bot.send_message(message.chat.id, "Главное меню:", reply_markup=markup)
+    # --- ХЕНДЛЕР: ГЛАВНОЕ МЕНЮ (текстовое, если пользователь пишет вручную) ---
+    @bot.message_handler(func=lambda message: message.text == "Главное меню")
+    def show_main_menu(message):
+        send_welcome(message)

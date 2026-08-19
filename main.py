@@ -28,12 +28,29 @@ bot = telebot.TeleBot(API_TOKEN)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton("👷 Я мастер"))
-    # Можно добавить другие роли позже
-    bot.reply_to(message,
-                 "Привет! Добро пожаловать в команду студии Sevara. Этот бот поможет тебе быстро изучить наши стандарты, правила и сделать твою работу комфортной и безопасной. Выбери свою роль ниже:",
-                 reply_markup=markup)
+    # Создаем инлайн-клавиатуру (кнопки под сообщением)
+    markup = types.InlineKeyboardMarkup(row_width=1)
+
+    btn_regulations = types.InlineKeyboardButton("📜 Регламенты и правила", callback_data="menu_regulations")
+    btn_penalties = types.InlineKeyboardButton("⚠️ Штрафы и санкции", callback_data="menu_penalties")
+    btn_faq = types.InlineKeyboardButton("❓ Частые вопросы (FAQ)", callback_data="show_faq")
+    btn_support = types.InlineKeyboardButton("🆘 Помощь администратора",
+                                             url="https://t.me/admin_sevara")  # Ссылка на админа
+
+    markup.add(btn_regulations, btn_penalties, btn_faq, btn_support)
+
+    welcome_text = (
+        f"👋 Привет, {message.from_user.first_name}! Добро пожаловать в *SevaraTeamBot*! ✨\n\n"
+        "Я твой помощник в салоне Sevara. Здесь ты найдешь все правила, регламенты и систему штрафов.\n"
+        "Выбирай нужный раздел ниже, чтобы быстро найти ответ на свой вопрос."
+    )
+
+    bot.send_message(
+        message.chat.id,
+        welcome_text,
+        parse_mode="Markdown",
+        reply_markup=markup
+    )
 
 
 @bot.message_handler(func=lambda message: message.text == "👷 Я мастер")
