@@ -1,6 +1,10 @@
 import telebot
 from telebot import types
 from pathlib import Path
+import logging
+
+# Настройка логов, чтобы видеть в консоли, что происходит при нажатии
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- КОНФИГУРАЦИЯ ПУТЕЙ ---
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -10,14 +14,14 @@ PENALTIES_DIR = DATA_DIR / "penalties"
 
 def register_master_handlers(bot):
     """
-    Функция регистрации всех хендлеров для бота.
-    Принимает объект bot как аргумент, чтобы избежать ошибок видимости.
+    Регистрирует все хендлеры для бота.
     """
 
     # --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: ПРИВЕТСТВИЕ ---
     def send_welcome(message):
         markup = types.InlineKeyboardMarkup(row_width=1)
 
+        # ВАЖНО: callback_data должен точно совпадать с тем, что ждет handler
         btn_regulations = types.InlineKeyboardButton("📜 Регламенты и правила", callback_data="menu_regulations")
         btn_penalties = types.InlineKeyboardButton("⚠️ Штрафы и санкции", callback_data="menu_penalties")
         btn_faq = types.InlineKeyboardButton("❓ Частые вопросы (FAQ)", callback_data="show_faq")
@@ -46,38 +50,56 @@ def register_master_handlers(bot):
     # --- ХЕНДЛЕР: ОБРАБОТКА CALLBACK (КНОПКИ) ---
     @bot.callback_query_handler(func=lambda call: True)
     def callback_handler(call):
+        logging.info(f"Пользователь {call.from_user.id} нажал кнопку: {call.data}")
+
         try:
-            # Обработка кнопки "Регламенты"
+            # 1. Обработка кнопки "Регламенты"
             if call.data == "menu_regulations":
+                logging.info("Открываем меню регламентов...")
+
+                # Ищем файлы, которые начинаются на 'regulations_'
                 files = [f for f in DATA_DIR.iterdir() if
                          f.is_file() and f.name.startswith("regulations_") and f.suffix == ".txt"]
+
                 if not files:
-                    bot.answer_callback_query(call.id, "Нет файлов регламентов", show_alert=True)
+                    logging.warning("Папка регламентов пуста или файлы не найдены!")
+                    # Показываем красивое уведомление сверху
+                    bot.answer_callback_query(call.id,
+                                              "📭 Сейчас нет загруженных регламентов. Обратитесь к администратору.",
+                                              show_alert=True)
+
+                    # Опционально: можно отправить сообщение в чат
+                    # bot.send_message(call.message.chat.id, "К сожалению, сейчас нет файлов с регламентами.")
                     return
 
                 markup = types.InlineKeyboardMarkup(row_width=1)
                 for f in files:
+                    # Убираем префикс regulations_ и подчеркивания для красивого названия
                     name = f.stem.replace("regulations_", "").replace("_", " ").title()
                     markup.add(types.InlineKeyboardButton(f"📂 {name}", callback_data=f"file_reg_{f.name}"))
 
                 markup.add(types.InlineKeyboardButton("🔙 Назад в меню", callback_data="start_over"))
 
                 bot.edit_message_text(
-                    "Выберите категорию правил:",
+                    "📚 Выберите категорию регламентов:",
                     call.message.chat.id,
                     call.message.message_id,
                     reply_markup=markup
                 )
 
-            # Обработка кнопки "Штрафы"
+            # 2. Обработка кнопки "Штрафы"
             elif call.data == "menu_penalties":
+                logging.info("Открываем меню штрафов...")
+
                 if not PENALTIES_DIR.exists():
-                    bot.answer_callback_query(call.id, "Папка со штрафами не найдена", show_alert=True)
+                    logging.error("Папка penalties не существует!")
+                    bot.answer_callback_query(call.id, "❌ Папка со штрафами не найдена на сервере.", show_alert=True)
                     return
 
                 files = [f for f in PENALTIES_DIR.iterdir() if f.is_file() and f.suffix == ".txt"]
                 if not files:
-                    bot.answer_callback_query(call.id, "Нет файлов штрафов", show_alert=True)
+                    logging.warning("В папке penalties нет файлов!")
+                    bot.answer_callback_query(call.id, "📭 Сейчас нет загруженных штрафов.", show_alert=True)
                     return
 
                 markup = types.InlineKeyboardMarkup(row_width=1)
@@ -97,13 +119,13 @@ def register_master_handlers(bot):
                 markup.add(types.InlineKeyboardButton("🔙 Назад в меню", callback_data="start_over"))
 
                 bot.edit_message_text(
-                    "Выберите категорию нарушений и штрафов:",
+                    "⚠️ Выберите категорию нарушений и штрафов:",
                     call.message.chat.id,
                     call.message.message_id,
                     reply_markup=markup
                 )
 
-            # Обработка кнопки "FAQ"
+            # 3. Обработка кнопки "FAQ"
             elif call.data == "show_faq":
                 faq_file = DATA_DIR / "faq.txt"
                 if faq_file.exists():
@@ -112,7 +134,7 @@ def register_master_handlers(bot):
                 else:
                     bot.answer_callback_query(call.id, "Файл FAQ пока не создан", show_alert=True)
 
-            # Обработка открытия файла регламентов
+            # 4. Открытие файла регламентов
             elif call.data.startswith("file_reg_"):
                 filename = call.data.replace("file_reg_", "")
                 path = DATA_DIR / filename
@@ -122,7 +144,7 @@ def register_master_handlers(bot):
                 else:
                     bot.answer_callback_query(call.id, "Файл потерян!", show_alert=True)
 
-            # Обработка открытия файла штрафов
+            # 5. Открытие файла штрафов
             elif call.data.startswith("file_pen_"):
                 filename = call.data.replace("file_pen_", "")
                 path = PENALTIES_DIR / filename
@@ -132,25 +154,33 @@ def register_master_handlers(bot):
                 else:
                     bot.answer_callback_query(call.id, "Файл потерян!", show_alert=True)
 
-            # Возврат в главное меню
+            # 6. Возврат в главное меню
             elif call.data == "start_over":
                 send_welcome(call.message)
-                # Удаляем старое сообщение с кнопками, чтобы не было дублирования
                 try:
                     bot.delete_message(call.message.chat.id, call.message.message_id)
                 except Exception:
-                    pass  # Игнорируем ошибку, если сообщение уже нельзя удалить
+                    pass
 
-            # Если ничего не подошло, просто отвечаем на нажатие (чтобы убрать часики загрузки)
             else:
-                bot.answer_callback_query(call.id, "Действие обработано")
+                # Если нажали какую-то неизвестную кнопку
+                logging.warning(f"Неизвестный callback_data: {call.data}")
+                bot.answer_callback_query(call.id, "Действие обработано", show_alert=False)
 
         except Exception as e:
-            # Логирование ошибки, чтобы бот не падал полностью
-            print(f"Ошибка в callback_handler: {e}")
-            bot.answer_callback_query(call.id, "Произошла ошибка, попробуйте позже", show_alert=True)
+            logging.error(f"Критическая ошибка в callback_handler: {e}", exc_info=True)
+            bot.answer_callback_query(call.id, "Произошла ошибка сервера. Попробуйте позже.", show_alert=True)
 
-    # --- ХЕНДЛЕР: СТЕРИЛИЗАЦИЯ (для совместимости со старыми кнопками, если есть) ---
+    # --- ХЕНДЛЕРЫ ДЛЯ СТАРЫХ ТЕКСТОВЫХ КНОПОК (НА ВСЯКИЙ СЛУЧАЙ) ---
+    # Если у тебя где-то в коде остались обычные кнопки (не inline), которые пишут текст в чат,
+    # этот блок их обработает, чтобы бот не молчал.
+
+    @bot.message_handler(
+        func=lambda message: message.text in ["Главное меню", "📜 Регламенты и правила", "⚠️ Штрафы и санкции"])
+    def handle_text_buttons(message):
+        logging.info(f"Пользователь нажал текстовую кнопку: {message.text}")
+        send_welcome(message)
+
     @bot.message_handler(func=lambda message: message.text == "✨ Стерилизация и СанПиН")
     def handle_sterilization(message):
         ster_file = DATA_DIR / "sterilization.txt"
@@ -162,8 +192,3 @@ def register_master_handlers(bot):
             bot.send_message(message.chat.id, text)
         except Exception as e:
             bot.reply_to(message, f"Ошибка чтения: {e}")
-
-    # --- ХЕНДЛЕР: ГЛАВНОЕ МЕНЮ (текстовое, если пользователь пишет вручную) ---
-    @bot.message_handler(func=lambda message: message.text == "Главное меню")
-    def show_main_menu(message):
-        send_welcome(message)
